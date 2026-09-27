@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Environment
+.env
+
+# Raw datasets
+data/raw/*
+!data/raw/.gitkeep
+
+# Processed data
+data/processed/*
+data/features/*
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.pyo
+*.bak
+cache/
+.pytest_cache/
+.mypy_cache/

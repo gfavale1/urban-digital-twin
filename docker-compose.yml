@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: urban_twin_db
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: urban_twin
+      POSTGRES_USER: urban_twin
+      POSTGRES_PASSWORD: urban_twin_dev
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/schema:/docker-entrypoint-initdb.d
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U urban_twin -d urban_twin"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres_data:

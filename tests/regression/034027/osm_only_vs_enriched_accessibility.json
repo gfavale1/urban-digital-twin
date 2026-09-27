@@ -1,0 +1,273 @@
+{
+  "municipality_code": "034027",
+  "experimental_control": {
+    "origin_rows": 17820,
+    "population": 198121.0,
+    "same_sections": true,
+    "same_network_nodes": true,
+    "same_population_weights": true
+  },
+  "thresholds_min": [
+    10,
+    15,
+    20
+  ],
+  "service_counts": {
+    "osm_only": {
+      "school": 111,
+      "pharmacy": 63,
+      "hospital": 19
+    },
+    "enriched": {
+      "school": 76,
+      "pharmacy": 31,
+      "hospital": 2
+    }
+  },
+  "comparison_records": [
+    {
+      "service_group": "school",
+      "metric": "usable_service_count",
+      "unit": "count",
+      "osm_only": 111.0,
+      "enriched": 76.0,
+      "delta_enriched_minus_osm": -35.0,
+      "relative_change_percent": -31.53153153153153
+    },
+    {
+      "service_group": "school",
+      "metric": "reachable_population_share",
+      "unit": "percentage_points",
+      "osm_only": 96.95802516872203,
+      "enriched": 96.9252177851038,
+      "delta_enriched_minus_osm": -0.0328073836182341,
+      "relative_change_percent": -0.03383668712429337
+    },
+    {
+      "service_group": "school",
+      "metric": "weighted_mean_nearest_time_min",
+      "unit": "minutes",
+      "osm_only": 11.44494480447697,
+      "enriched": 11.323922630664276,
+      "delta_enriched_minus_osm": -0.12102217381269398,
+      "relative_change_percent": -1.0574290735360576
+    },
+    {
+      "service_group": "school",
+      "metric": "population_share_within_10_min",
+      "unit": "percentage_points",
+      "osm_only": 66.5882532357977,
+      "enriched": 63.04260468222572,
+      "delta_enriched_minus_osm": -3.545648553571972,
+      "relative_change_percent": -5.324735792387237
+    },
+    {
+      "service_group": "school",
+      "metric": "population_within_10_min",
+      "unit": "people",
+      "osm_only": 131925.31319329474,
+      "enriched": 124900.63882247242,
+      "delta_enriched_minus_osm": -7024.674370822322,
+      "relative_change_percent": -5.324735792387234
+    },
+    {
+      "service_group": "school",
+      "metric": "population_share_within_15_min",
+      "unit": "percentage_points",
+      "osm_only": 77.36836599052454,
+      "enriched": 77.47802708255526,
+      "delta_enriched_minus_osm": 0.10966109203071994,
+      "relative_change_percent": 0.1417389273080297
+    },
+    {
+      "service_group": "school",
+      "metric": "population_within_15_min",
+      "unit": "people",
+      "osm_only": 153282.9803840871,
+      "enriched": 153500.2420362293,
+      "delta_enriched_minus_osm": 217.2616521421878,
+      "relative_change_percent": 0.14173892730803306
+    },
+    {
+      "service_group": "school",
+      "metric": "population_share_within_20_min",
+      "unit": "percentage_points",
+      "osm_only": 82.28164253993425,
+      "enriched": 83.50259640115881,
+      "delta_enriched_minus_osm": 1.220953861224558,
+      "relative_change_percent": 1.4838715216847853
+    },
+    {
+      "service_group": "school",
+      "metric": "population_within_20_min",
+      "unit": "people",
+      "osm_only": 163017.21301654313,
+      "enriched": 165436.17901593985,
+      "delta_enriched_minus_osm": 2418.9659993967216,
+      "relative_change_percent": 1.4838715216847946
+    },
+    {
+      "service_group": "pharmacy",
+      "metric": "usable_service_count",
+      "unit": "count",
+      "osm_only": 63.0,
+      "enriched": 31.0,
+      "delta_enriched_minus_osm": -32.0,
+      "relative_change_percent": -50.79365079365079
+    },
+    {
+      "service_group": "pharmacy",
+      "metric": "reachable_population_share",
+      "unit": "percentage_points",
+      "osm_only": 97.05678935454412,
+      "enriched": 97.00295020237618,
+      "delta_enriched_minus_osm": -0.053839152167938664,
+      "relative_change_percent": -0.055471804214815554
+    },
+    {
+      "service_group": "pharmacy",
+      "metric": "weighted_mean_nearest_time_min",
+      "unit": "minutes",
+      "osm_only": 11.637958692628658,
+      "enriched": 17.41597888339264,
+      "delta_enriched_minus_osm": 5.778020190763982,
+      "relative_change_percent": 49.648055499833575
+    },
+    {
+      "service_group": "pharmacy",
+      "metric": "population_share_within_10_min",
+      "unit": "percentage_points",
+      "osm_only": 65.53998121731559,
+      "enriched": 51.61882821013448,
+      "delta_enriched_minus_osm": -13.921153007181104,
+      "relative_change_percent": -21.240703382293848
+    },
+    {
+      "service_group": "pharmacy",
+      "metric": "population_within_10_min",
+      "unit": "people",
+      "osm_only": 129848.4661875578,
+      "enriched": 102267.73863820054,
+      "delta_enriched_minus_osm": -27580.727549357267,
+      "relative_change_percent": -21.240703382293844
+    },
+    {
+      "service_group": "pharmacy",
+      "metric": "population_share_within_15_min",
+      "unit": "percentage_points",
+      "osm_only": 76.56347763159539,
+      "enriched": 68.07112426221869,
+      "delta_enriched_minus_osm": -8.492353369376701,
+      "relative_change_percent": -11.091911747060152
+    },
+    {
+      "service_group": "pharmacy",
+      "metric": "population_within_15_min",
+      "unit": "people",
+      "osm_only": 151688.3275184931,
+      "enriched": 134863.19209955027,
+      "delta_enriched_minus_osm": -16825.13541894284,
+      "relative_change_percent": -11.091911747060168
+    },
+    {
+      "service_group": "pharmacy",
+      "metric": "population_share_within_20_min",
+      "unit": "percentage_points",
+      "osm_only": 82.27361877289958,
+      "enriched": 78.28481500276031,
+      "delta_enriched_minus_osm": -3.9888037701392705,
+      "relative_change_percent": -4.848217240996281
+    },
+    {
+      "service_group": "pharmacy",
+      "metric": "population_within_20_min",
+      "unit": "people",
+      "osm_only": 163001.31624905637,
+      "enriched": 155098.65833161876,
+      "delta_enriched_minus_osm": -7902.657917437609,
+      "relative_change_percent": -4.848217240996272
+    },
+    {
+      "service_group": "hospital",
+      "metric": "usable_service_count",
+      "unit": "count",
+      "osm_only": 19.0,
+      "enriched": 2.0,
+      "delta_enriched_minus_osm": -17.0,
+      "relative_change_percent": -89.47368421052632
+    },
+    {
+      "service_group": "hospital",
+      "metric": "reachable_population_share",
+      "unit": "percentage_points",
+      "osm_only": 96.86631893254854,
+      "enriched": 96.83520759390291,
+      "delta_enriched_minus_osm": -0.03111133864562987,
+      "relative_change_percent": -0.032117808324371035
+    },
+    {
+      "service_group": "hospital",
+      "metric": "weighted_mean_nearest_time_min",
+      "unit": "minutes",
+      "osm_only": 28.096316140591792,
+      "enriched": 39.484891120358995,
+      "delta_enriched_minus_osm": 11.388574979767203,
+      "relative_change_percent": 40.53405052384681
+    },
+    {
+      "service_group": "hospital",
+      "metric": "population_share_within_10_min",
+      "unit": "percentage_points",
+      "osm_only": 19.272687390293367,
+      "enriched": 5.177621524777765,
+      "delta_enriched_minus_osm": -14.095065865515602,
+      "relative_change_percent": -73.13492706063681
+    },
+    {
+      "service_group": "hospital",
+      "metric": "population_within_10_min",
+      "unit": "people",
+      "osm_only": 38183.24098452312,
+      "enriched": 10257.955541104955,
+      "delta_enriched_minus_osm": -27925.285443418168,
+      "relative_change_percent": -73.13492706063681
+    },
+    {
+      "service_group": "hospital",
+      "metric": "population_share_within_15_min",
+      "unit": "percentage_points",
+      "osm_only": 35.8781785241214,
+      "enriched": 10.889851441220921,
+      "delta_enriched_minus_osm": -24.988327082900483,
+      "relative_change_percent": -69.64770261706703
+    },
+    {
+      "service_group": "hospital",
+      "metric": "population_within_15_min",
+      "unit": "people",
+      "osm_only": 71082.20607377456,
+      "enriched": 21575.082573861302,
+      "delta_enriched_minus_osm": -49507.12349991326,
+      "relative_change_percent": -69.64770261706703
+    },
+    {
+      "service_group": "hospital",
+      "metric": "population_share_within_20_min",
+      "unit": "percentage_points",
+      "osm_only": 51.98892645950477,
+      "enriched": 21.140420666215196,
+      "delta_enriched_minus_osm": -30.848505793289572,
+      "relative_change_percent": -59.336685509977016
+    },
+    {
+      "service_group": "hospital",
+      "metric": "population_within_20_min",
+      "unit": "people",
+      "osm_only": 103000.98099083545,
+      "enriched": 41883.61282811221,
+      "delta_enriched_minus_osm": -61117.36816272324,
+      "relative_change_percent": -59.336685509977016
+    }
+  ],
+  "interpretation_rule": "For coverage shares, positive delta means higher coverage in the enriched scenario. For nearest-time metrics, negative delta means lower walking time in the enriched scenario."
+}

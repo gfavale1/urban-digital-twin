@@ -1,0 +1,15 @@
+pandas
+geopandas
+shapely
+pyproj
+sqlalchemy
+psycopg[binary]
+
+osmnx
+networkx
+
+requests
+python-dotenv
+pyarrow
+
+rapidfuzz>=3,<4
