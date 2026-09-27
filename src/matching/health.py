@@ -41,7 +41,7 @@ def parse_args():
     parser.add_argument(
         "--municipality-code",
         required=True,
-        help="Codice ISTAT comunale a 6 cifre, es. 077014.",
+        help="Codice ISTAT comunale a 6 cifre.",
     )
 
     parser.add_argument(

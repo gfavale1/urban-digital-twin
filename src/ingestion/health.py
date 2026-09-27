@@ -28,7 +28,7 @@ def parse_args():
     parser.add_argument(
         "--municipality-code",
         required=True,
-        help="Codice ISTAT comunale a 6 cifre, es. 077014.",
+        help="Codice ISTAT comunale a 6 cifre.",
     )
 
     parser.add_argument(
@@ -151,19 +151,37 @@ def parse_date(series):
     )
 
 
-def latest_file(directory, pattern="*.csv"):
+def unique_raw_file(directory, pattern="*.csv"):
+    """
+    Resolve an immutable Bronze source deterministically.
+
+    A raw-source directory must contain exactly one file matching the
+    requested pattern. Multiple candidates are treated as an ambiguous
+    source version rather than being silently resolved using filesystem
+    modification time.
+    """
     files = sorted(
         directory.glob(pattern),
-        key=lambda path: (
-            path.stat().st_mtime,
-            path.name,
-        ),
-        reverse=True,
+        key=lambda path: path.name,
     )
 
     if not files:
         raise FileNotFoundError(
             f"Nessun file {pattern} trovato in {directory}"
+        )
+
+    if len(files) > 1:
+        candidates = "\n".join(
+            f"  - {path.name}"
+            for path in files
+        )
+
+        raise RuntimeError(
+            "Versione raw Health ambigua in "
+            f"{directory}: trovati {len(files)} file.\n"
+            "La pipeline non seleziona automaticamente una versione "
+            "in base al timestamp del filesystem.\n"
+            f"{candidates}"
         )
 
     return files[0]
@@ -924,13 +942,13 @@ def make_pharmacy_geodataframe(
 def main():
     args = parse_args()
 
-    pharmacy_raw_path = latest_file(
+    pharmacy_raw_path = unique_raw_file(
         RAW_SALUTE_DIR
         / "farmacie",
         "*.csv",
     )
 
-    hospital_raw_path = latest_file(
+    hospital_raw_path = unique_raw_file(
         RAW_SALUTE_DIR
         / f"strutture_ospedaliere_{args.hospital_year}",
         "*.csv",

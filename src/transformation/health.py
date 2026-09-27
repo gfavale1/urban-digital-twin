@@ -25,7 +25,7 @@ qa_MISSING_TEXT_VALUES = {'', '-', 'nan', 'none', 'null', 'n/a', 'na'}
 
 def qa_parse_args():
     parser = argparse.ArgumentParser(description='QA spaziale dei siti Health. Individua coordinate sorgente sospette (es. duplicati su indirizzi diversi), geocodifica solo i record necessari o, opzionalmente, tutti i record, e confronta coordinate sorgente e candidati Nominatim.')
-    parser.add_argument('--municipality-code', required=True, help='Codice ISTAT comunale a 6 cifre, es. 077014.')
+    parser.add_argument('--municipality-code', required=True, help='Codice ISTAT comunale a 6 cifre.')
     parser.add_argument('--pharmacy-reference-date', default='2025-06-30', help='Snapshot farmacie YYYY-MM-DD. Default: 2025-06-30.')
     parser.add_argument('--hospital-year', default='2023', help='Anno dataset ospedaliero. Default: 2023.')
     parser.add_argument('--validate-all', action='store_true', help='Geocodifica anche i record con coordinate sorgente non sospette. Utile nel PoC; non necessario nella pipeline operativa nazionale.')
@@ -412,8 +412,8 @@ finalize_GEOCODER_SITE_MIN_SCORE = 80.0
 finalize_GEOCODER_STREET_MIN_SCORE = 80.0
 
 def finalize_parse_args():
-    parser = argparse.ArgumentParser(description='Finalizza i siti Health combinando Ministero della Salute, matching OSM e QA/geocoding. Non contiene eccezioni specifiche per Matera: usa regole generiche di evidenza e provenance.')
-    parser.add_argument('--municipality-code', required=True, help='Codice ISTAT comunale a 6 cifre, es. 077014.')
+    parser = argparse.ArgumentParser(description='Finalizza i siti Health combinando Ministero della Salute, matching OSM e QA/geocoding. Non contiene eccezioni specifiche per singoli comuni: usa regole generiche di evidenza e provenance.')
+    parser.add_argument('--municipality-code', required=True, help='Codice ISTAT comunale a 6 cifre.')
     parser.add_argument('--pharmacy-reference-date', default='2025-06-30', help='Snapshot farmacie YYYY-MM-DD. Default: 2025-06-30.')
     parser.add_argument('--hospital-year', default='2023', help='Anno dataset ospedaliero. Default: 2023.')
     args = parser.parse_args()
@@ -615,7 +615,7 @@ def finalize_main():
     status_counts = final['resolution_status'].value_counts(dropna=False).to_dict()
     resolution_counts = final['coordinate_resolution'].value_counts(dropna=False).to_dict()
     source_counts = final['coordinate_source'].value_counts(dropna=False).to_dict()
-    manifest = {'municipality_code': args.municipality_code, 'pharmacy_reference_date': args.pharmacy_reference_date.date().isoformat(), 'hospital_reference_year': int(args.hospital_year), 'total_health_sites': int(len(final)), 'pharmacy_sites': int((final['subcategory'] == 'pharmacy').sum()), 'hospital_sites': int((final['subcategory'] == 'hospital').sum()), 'usable_for_accessibility': int(final['usable_for_accessibility'].sum()), 'resolution_status_counts': {str(key): int(value) for key, value in status_counts.items()}, 'coordinate_resolution_counts': {str(key): int(value) for key, value in resolution_counts.items()}, 'coordinate_source_counts': {str(key): int(value) for key, value in source_counts.items()}, 'notes': ['Il dataset finale non applica patch specifiche per Matera.', 'Coordinate ministeriali duplicate su indirizzi distinti sono considerate sospette e non usate come evidenza positiva.', 'Review OSM possono essere promosse automaticamente solo con indirizzo molto forte, margine sufficiente e ulteriore evidenza sul nome o sulla prossimità.', 'I residui possono essere risolti tramite consenso spaziale tra geocoder e POI OSM della stessa categoria.', 'Gli street anchor restano esplicitamente a risoluzione inferiore e confidence medium.']}
+    manifest = {'municipality_code': args.municipality_code, 'pharmacy_reference_date': args.pharmacy_reference_date.date().isoformat(), 'hospital_reference_year': int(args.hospital_year), 'total_health_sites': int(len(final)), 'pharmacy_sites': int((final['subcategory'] == 'pharmacy').sum()), 'hospital_sites': int((final['subcategory'] == 'hospital').sum()), 'usable_for_accessibility': int(final['usable_for_accessibility'].sum()), 'resolution_status_counts': {str(key): int(value) for key, value in status_counts.items()}, 'coordinate_resolution_counts': {str(key): int(value) for key, value in resolution_counts.items()}, 'coordinate_source_counts': {str(key): int(value) for key, value in source_counts.items()}, 'notes': ['Il dataset finale non applica patch specifiche per singoli comuni.', 'Coordinate ministeriali duplicate su indirizzi distinti sono considerate sospette e non usate come evidenza positiva.', 'Review OSM possono essere promosse automaticamente solo con indirizzo molto forte, margine sufficiente e ulteriore evidenza sul nome o sulla prossimità.', 'I residui possono essere risolti tramite consenso spaziale tra geocoder e POI OSM della stessa categoria.', 'Gli street anchor restano esplicitamente a risoluzione inferiore e confidence medium.']}
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding='utf-8')
     print('\n====================================')
     print(' FINAL HEALTH SITES')
