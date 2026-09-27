@@ -1540,11 +1540,134 @@ def street_fallback_score_geocoder_candidate(matched_street, civic, candidate, c
         resolution = 'street'
     return {'display_name': display_name, 'longitude': longitude, 'latitude': latitude, 'inside_target': inside, 'candidate_road': candidate_road, 'candidate_house_number': candidate_house_number, 'road_score': road_score, 'civic_match': civic_match, 'resolution': resolution, 'osm_type': candidate.get('osm_type'), 'osm_id': candidate.get('osm_id'), 'place_id': candidate.get('place_id')}
 
+def street_fallback_write_empty_outputs(args):
+    """Write valid empty fallback outputs when no buildings need recovery."""
+
+    features_dir = (
+        street_fallback_FEATURES_MIM_DIR
+        / args.municipality_code
+    )
+
+    features_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    summary_path = (
+        features_dir
+        / f"school_osm_street_fallback_{args.building_year}.csv"
+    )
+
+    street_candidates_path = (
+        features_dir
+        / (
+            "school_osm_street_fallback_candidates_"
+            f"{args.building_year}.csv"
+        )
+    )
+
+    geocoder_candidates_path = (
+        features_dir
+        / (
+            "school_osm_street_geocoder_candidates_"
+            f"{args.building_year}.csv"
+        )
+    )
+
+    summary_columns = [
+        "building_code",
+        "official_building_address",
+        "parsed_street",
+        "parsed_civic",
+        "street_match_status",
+        "matched_osm_street",
+        "street_match_score",
+        "street_match_margin",
+        "street_initials_compatible",
+        "geocoder_query",
+        "geocoder_query_source",
+        "fallback_status",
+        "fallback_confidence",
+        "candidate_longitude",
+        "candidate_latitude",
+        "candidate_display_name",
+        "candidate_road",
+        "candidate_house_number",
+        "candidate_road_score",
+        "candidate_civic_match",
+        "candidate_inside_target",
+        "candidate_resolution",
+    ]
+
+    street_candidate_columns = [
+        "building_code",
+        "official_building_address",
+        "parsed_street",
+        "parsed_civic",
+        "candidate_rank",
+        "osm_street_name",
+        "street_score",
+        "base_score",
+        "core_score",
+        "surname_score",
+        "initials_compatible",
+        "subset_penalty",
+    ]
+
+    geocoder_candidate_columns = [
+        "building_code",
+        "query_street",
+        "candidate_rank",
+        "display_name",
+        "longitude",
+        "latitude",
+        "inside_target",
+        "candidate_road",
+        "candidate_house_number",
+        "road_score",
+        "civic_match",
+        "resolution",
+        "osm_type",
+        "osm_id",
+        "place_id",
+    ]
+
+    pd.DataFrame(
+        columns=summary_columns
+    ).to_csv(
+        summary_path,
+        index=False,
+        encoding="utf-8-sig",
+    )
+
+    pd.DataFrame(
+        columns=street_candidate_columns
+    ).to_csv(
+        street_candidates_path,
+        index=False,
+        encoding="utf-8-sig",
+    )
+
+    pd.DataFrame(
+        columns=geocoder_candidate_columns
+    ).to_csv(
+        geocoder_candidates_path,
+        index=False,
+        encoding="utf-8-sig",
+    )
+
+    print("✓ Nessun pending: creati output fallback vuoti.")
+    print(f"✓ {summary_path}")
+    print(f"✓ {street_candidates_path}")
+    print(f"✓ {geocoder_candidates_path}")
+
+
 def street_fallback_main():
     args = street_fallback_parse_args()
     pending, buildings_path = street_fallback_load_pending_buildings(args)
     if pending.empty:
         print('Nessun edificio unresolved da processare.')
+        street_fallback_write_empty_outputs(args)
         return
     osm_street_names, edges_path = street_fallback_load_osm_street_names(args)
     context = street_fallback_load_municipality_context(pending, args)
@@ -1725,7 +1848,7 @@ def remaining_services_school_name_core(value):
     value = remaining_services_normalize_text(value)
     if not value:
         return ''
-    generic = {'SCUOLA', 'ISTITUTO', 'IST', 'I', 'C', 'IC', 'PLESSO', 'SEDE', 'MT', 'MATERNA', 'INFANZIA', 'PRIMARIA', 'SECONDARIA', 'PRIMO', 'SECONDO', 'GRADO', 'STATALE', 'PARITARIA', 'L', 'CLAS'}
+    generic = {'SCUOLA', 'ISTITUTO', 'IST', 'I', 'C', 'IC', 'PLESSO', 'SEDE', 'MATERNA', 'INFANZIA', 'PRIMARIA', 'SECONDARIA', 'PRIMO', 'SECONDO', 'GRADO', 'STATALE', 'PARITARIA', 'L', 'CLAS'}
     tokens = [token for token in value.split() if token not in generic]
     return ' '.join(tokens) or value
 
