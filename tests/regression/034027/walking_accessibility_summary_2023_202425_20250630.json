@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-09-27T13:34:01.940124+00:00",
+  "generated_at_utc": "2026-09-27T17:19:59.339215+00:00",
   "municipality_code": "034027",
   "service_layer": "enriched",
   "thresholds_min": [
@@ -19,20 +19,26 @@
     "bad_edges_skipped": 0,
     "duplicate_directed_pairs_collapsed": 967
   },
+  "walking_speed_requested_m_s": 1.4,
   "walking_speed_inferred": {
     "median_m_s": 1.4,
     "p05_m_s": 1.4,
     "p95_m_s": 1.4
   },
+  "walking_speed_validation": {
+    "expected_m_s": 1.4,
+    "validated_edge_count": 56210,
+    "inconsistent_edge_count": 0
+  },
   "service_group_counts": {
     "school": 76,
-    "pharmacy": 31,
+    "pharmacy": 30,
     "hospital": 2
   },
   "methodology": {
     "directionality": "Accessibility is computed from origin to service on the directed pedestrian graph by running Dijkstra from each service on the reversed graph.",
     "weights": "walking_time_s is used for time accessibility and length_m for network distance.",
-    "snap_segments": "Origin fallback snap distance and service-to-network snap distance are added to route length and converted to time using the median effective walking speed inferred from the network.",
+    "snap_segments": "Origin fallback snap distance and service-to-network snap distance are added to route length and converted to time using the configured walking speed after verifying consistency with the network edge weights.",
     "unreachable": "Origins with no directed path to a service group are preserved as unreachable rather than dropped.",
     "groups": {
       "school": "all canonical services with category=education",
@@ -55,13 +61,13 @@
     "pharmacy_reachable_population": 192183.2149704497,
     "pharmacy_unreachable_population": 5937.785029550287,
     "pharmacy_reachable_share": 0.9700295020237618,
-    "pharmacy_weighted_mean_nearest_time_min": 17.41597888339264,
+    "pharmacy_weighted_mean_nearest_time_min": 18.009961513068344,
     "pharmacy_population_within_10_min": 102267.73863820054,
     "pharmacy_population_share_within_10_min": 0.5161882821013448,
-    "pharmacy_population_within_15_min": 134863.19209955027,
-    "pharmacy_population_share_within_15_min": 0.6807112426221869,
-    "pharmacy_population_within_20_min": 155098.65833161876,
-    "pharmacy_population_share_within_20_min": 0.7828481500276031,
+    "pharmacy_population_within_15_min": 134854.46328599093,
+    "pharmacy_population_share_within_15_min": 0.6806671846295492,
+    "pharmacy_population_within_20_min": 155010.60833874025,
+    "pharmacy_population_share_within_20_min": 0.7824037246871369,
     "hospital_reachable_population": 191850.88163711637,
     "hospital_unreachable_population": 6270.11836288363,
     "hospital_reachable_share": 0.9683520759390291,

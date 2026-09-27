@@ -1,5 +1,5 @@
 {
-  "generated_at_utc": "2026-09-27T13:37:21.096297+00:00",
+  "generated_at_utc": "2026-09-27T17:20:30.586588+00:00",
   "municipality_code": "034027",
   "service_layer": "osm_only",
   "thresholds_min": [
@@ -19,20 +19,26 @@
     "bad_edges_skipped": 0,
     "duplicate_directed_pairs_collapsed": 967
   },
+  "walking_speed_requested_m_s": 1.4,
   "walking_speed_inferred": {
     "median_m_s": 1.4,
     "p05_m_s": 1.4,
     "p95_m_s": 1.4
   },
+  "walking_speed_validation": {
+    "expected_m_s": 1.4,
+    "validated_edge_count": 56210,
+    "inconsistent_edge_count": 0
+  },
   "service_group_counts": {
     "school": 111,
-    "pharmacy": 63,
-    "hospital": 19
+    "pharmacy": 58,
+    "hospital": 17
   },
   "methodology": {
     "directionality": "Accessibility is computed from origin to service on the directed pedestrian graph by running Dijkstra from each service on the reversed graph.",
     "weights": "walking_time_s is used for time accessibility and length_m for network distance.",
-    "snap_segments": "Origin fallback snap distance and service-to-network snap distance are added to route length and converted to time using the median effective walking speed inferred from the network.",
+    "snap_segments": "Origin fallback snap distance and service-to-network snap distance are added to route length and converted to time using the configured walking speed after verifying consistency with the network edge weights.",
     "unreachable": "Origins with no directed path to a service group are preserved as unreachable rather than dropped.",
     "groups": {
       "school": "all canonical services with category=education",
@@ -55,22 +61,22 @@
     "pharmacy_reachable_population": 192289.88163711637,
     "pharmacy_unreachable_population": 5831.11836288363,
     "pharmacy_reachable_share": 0.9705678935454413,
-    "pharmacy_weighted_mean_nearest_time_min": 11.637958692628658,
+    "pharmacy_weighted_mean_nearest_time_min": 12.189990548488021,
     "pharmacy_population_within_10_min": 129848.4661875578,
     "pharmacy_population_share_within_10_min": 0.6553998121731558,
-    "pharmacy_population_within_15_min": 151688.3275184931,
-    "pharmacy_population_share_within_15_min": 0.7656347763159539,
-    "pharmacy_population_within_20_min": 163001.31624905637,
-    "pharmacy_population_share_within_20_min": 0.8227361877289958,
+    "pharmacy_population_within_15_min": 151651.3614167982,
+    "pharmacy_population_share_within_15_min": 0.765448192855872,
+    "pharmacy_population_within_20_min": 162872.89285330952,
+    "pharmacy_population_share_within_20_min": 0.8220879808466014,
     "hospital_reachable_population": 191912.51973235447,
     "hospital_unreachable_population": 6208.480267645529,
     "hospital_reachable_share": 0.9686631893254853,
-    "hospital_weighted_mean_nearest_time_min": 28.096316140591792,
+    "hospital_weighted_mean_nearest_time_min": 29.07194430594897,
     "hospital_population_within_10_min": 38183.24098452312,
     "hospital_population_share_within_10_min": 0.19272687390293367,
     "hospital_population_within_15_min": 71082.20607377456,
     "hospital_population_share_within_15_min": 0.358781785241214,
-    "hospital_population_within_20_min": 103000.98099083545,
-    "hospital_population_share_within_20_min": 0.5198892645950477
+    "hospital_population_within_20_min": 102982.22677220008,
+    "hospital_population_share_within_20_min": 0.5197946041671508
   }
 }

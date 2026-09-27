@@ -27,7 +27,7 @@
   "comparison_records": [
     {
       "service_group": "school",
-      "metric": "service_count",
+      "metric": "usable_service_count",
       "unit": "count",
       "osm_only": 50.0,
       "enriched": 56.0,
@@ -108,7 +108,7 @@
     },
     {
       "service_group": "pharmacy",
-      "metric": "service_count",
+      "metric": "usable_service_count",
       "unit": "count",
       "osm_only": 20.0,
       "enriched": 17.0,
@@ -189,7 +189,7 @@
     },
     {
       "service_group": "hospital",
-      "metric": "service_count",
+      "metric": "usable_service_count",
       "unit": "count",
       "osm_only": 2.0,
       "enriched": 1.0,

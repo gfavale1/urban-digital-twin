@@ -667,7 +667,7 @@ def school_sites_load_mim_registry(
         raise FileNotFoundError(
             "\nRegistro MIM Silver non trovato:\n"
             f"{path}\n\n"
-            "Eseguire prima mim_schools.py."
+            "Eseguire prima il preprocessing Education tramite src/ingestion/mim.py."
         )
 
     schools = pd.read_parquet(
@@ -5167,7 +5167,7 @@ def building_match_load_inputs(
     )
 
     # Compatibility with the canonical schema produced by
-    # mim_school_buildings_generalized.py.
+    # precedente pipeline MIM legacy.
     # Keep the legacy alias internally because downstream matching
     # code still refers to CODICEEDIFICIO.
     if (

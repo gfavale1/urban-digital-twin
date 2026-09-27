@@ -344,17 +344,70 @@ def filter_municipality(
             f"PRO_COM cercato: {procom}"
         )
 
-    municipality_name = str(
-        census_municipality[
-            "COMUNE"
-        ].iloc[0]
+    municipality_names = (
+        census_municipality["COMUNE"]
+        .dropna()
+        .astype(str)
+        .str.strip()
     )
+    municipality_names = municipality_names[
+        municipality_names.ne("")
+    ]
 
-    province_name = str(
-        census_municipality[
-            "PROVINCIA"
-        ].iloc[0]
+    province_names = (
+        census_municipality["PROVINCIA"]
+        .dropna()
+        .astype(str)
+        .str.strip()
     )
+    province_names = province_names[
+        province_names.ne("")
+    ]
+
+    if not municipality_names.empty:
+        municipality_name = municipality_names.iloc[0]
+    else:
+        dimension_path = (
+            PROCESSED_DIR
+            / "municipality_dimension_2023.parquet"
+        )
+
+        if not dimension_path.exists():
+            raise RuntimeError(
+                "Nome comunale assente nel censimento e "
+                "dimensione amministrativa nazionale non disponibile."
+            )
+
+        dimension = pd.read_parquet(
+            dimension_path
+        )
+
+        dimension["istat_code"] = (
+            dimension["istat_code"]
+            .astype(str)
+            .str.strip()
+            .str.zfill(6)
+        )
+
+        dimension_row = dimension.loc[
+            dimension["istat_code"]
+            == municipality_code
+        ]
+
+        if len(dimension_row) != 1:
+            raise RuntimeError(
+                "Impossibile risolvere univocamente il nome "
+                f"del comune {municipality_code}."
+            )
+
+        municipality_name = str(
+            dimension_row.iloc[0]["name"]
+        ).strip()
+
+    if not province_names.empty:
+        province_name = province_names.iloc[0]
+    else:
+        province_name = None
 
     province_code = str(
         int(

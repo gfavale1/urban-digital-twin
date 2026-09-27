@@ -1,6 +1,7 @@
 {
-  "generated_at_utc": "2026-09-27T11:29:21.329372+00:00",
+  "generated_at_utc": "2026-09-27T17:19:27.606552+00:00",
   "municipality_code": "077014",
+  "service_layer": "enriched",
   "thresholds_min": [
     10,
     15,
@@ -18,10 +19,16 @@
     "bad_edges_skipped": 0,
     "duplicate_directed_pairs_collapsed": 228
   },
+  "walking_speed_requested_m_s": 1.4,
   "walking_speed_inferred": {
     "median_m_s": 1.4,
     "p05_m_s": 1.4,
     "p95_m_s": 1.4
+  },
+  "walking_speed_validation": {
+    "expected_m_s": 1.4,
+    "validated_edge_count": 17582,
+    "inconsistent_edge_count": 0
   },
   "service_group_counts": {
     "school": 56,
@@ -31,7 +38,7 @@
   "methodology": {
     "directionality": "Accessibility is computed from origin to service on the directed pedestrian graph by running Dijkstra from each service on the reversed graph.",
     "weights": "walking_time_s is used for time accessibility and length_m for network distance.",
-    "snap_segments": "Origin fallback snap distance and service-to-network snap distance are added to route length and converted to time using the median effective walking speed inferred from the network.",
+    "snap_segments": "Origin fallback snap distance and service-to-network snap distance are added to route length and converted to time using the configured walking speed after verifying consistency with the network edge weights.",
     "unreachable": "Origins with no directed path to a service group are preserved as unreachable rather than dropped.",
     "groups": {
       "school": "all canonical services with category=education",

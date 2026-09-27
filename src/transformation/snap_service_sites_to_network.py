@@ -11,6 +11,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[2]
 
 PROCESSED_OSM_DIR = ROOT / "data" / "processed" / "osm"
+PROCESSED_ISTAT_DIR = ROOT / "data" / "processed" / "istat"
 PROCESSED_SERVICES_DIR = ROOT / "data" / "processed" / "services"
 FEATURES_ACCESSIBILITY_DIR = ROOT / "data" / "features" / "accessibility"
 
@@ -187,6 +188,113 @@ def load_inputs(args):
             "edges": str(edges_path),
         },
     )
+
+
+
+def apply_municipality_boundary_eligibility(
+    services,
+    municipality_code,
+):
+    """
+    Applica in modo simmetrico la policy spaziale dell'esperimento:
+    la domanda e l'offerta analizzate appartengono al comune target.
+
+    I record originali NON vengono eliminati.
+    Nel layer network-ready:
+      - si conserva l'usabilità originaria;
+      - si registra se il punto ricade nel comune;
+      - un record originariamente usabile ma esterno viene escluso
+        soltanto dall'analisi di accessibilità comunale.
+    """
+    boundary_path = (
+        PROCESSED_ISTAT_DIR
+        / f"{municipality_code}_census_areas_2021.parquet"
+    )
+
+    if not boundary_path.exists():
+        raise FileNotFoundError(
+            "Dataset ISTAT necessario al filtro comunale non trovato: "
+            f"{boundary_path}"
+        )
+
+    areas = gpd.read_parquet(boundary_path)
+
+    if areas.crs is None:
+        raise RuntimeError("Census areas ISTAT senza CRS.")
+
+    if services.crs is None:
+        raise RuntimeError("Canonical service layer senza CRS.")
+
+    area_geometries = areas.geometry.dropna()
+
+    if area_geometries.empty:
+        raise RuntimeError(
+            "Nessuna geometria ISTAT disponibile per il comune "
+            f"{municipality_code}."
+        )
+
+    try:
+        municipality_geometry = area_geometries.union_all()
+    except AttributeError:
+        municipality_geometry = area_geometries.unary_union
+
+    if (
+        municipality_geometry is None
+        or municipality_geometry.is_empty
+    ):
+        raise RuntimeError(
+            "Geometria comunale ISTAT vuota per "
+            f"{municipality_code}."
+        )
+
+    result = services.copy()
+
+    services_for_test = result.to_crs(areas.crs)
+
+    inside = (
+        services_for_test.geometry
+        .apply(
+            lambda geom:
+                bool(municipality_geometry.covers(geom))
+                if (
+                    geom is not None
+                    and not geom.is_empty
+                )
+                else False
+        )
+        .astype(bool)
+    )
+
+    original_usable = (
+        result["usable_for_accessibility"]
+        .fillna(False)
+        .astype(bool)
+    )
+
+    excluded = original_usable & ~inside
+
+    result["usable_before_boundary_filter"] = original_usable
+    result["inside_municipality"] = inside
+    result["excluded_by_municipality_boundary"] = excluded
+    result["usable_for_accessibility"] = original_usable & inside
+
+    summary = {
+        "boundary_source": str(boundary_path),
+        "policy": (
+            "municipality_only_supply; points exactly on the "
+            "boundary are included via covers()"
+        ),
+        "service_sites_total": int(len(result)),
+        "inside_municipality": int(inside.sum()),
+        "outside_municipality": int((~inside).sum()),
+        "usable_before_boundary_filter": int(original_usable.sum()),
+        "usable_excluded_outside_municipality": int(excluded.sum()),
+        "usable_after_boundary_filter": int(
+            result["usable_for_accessibility"].sum()
+        ),
+    }
+
+    return result, summary
 
 
 def prepare_nodes(nodes):
@@ -661,6 +769,14 @@ def main():
         args
     )
 
+    (
+        services,
+        boundary_summary,
+    ) = apply_municipality_boundary_eligibility(
+        services,
+        args.municipality_code,
+    )
+
     nodes = prepare_nodes(
         nodes
     )
@@ -778,6 +894,9 @@ def main():
 
         "service_layer":
             args.service_layer,
+
+        "municipality_boundary_filter":
+            boundary_summary,
 
         "inputs":
             input_paths,
@@ -905,6 +1024,30 @@ def main():
 
     print(
         f"Service layer: {args.service_layer}"
+    )
+
+    print(
+        "\nMunicipality boundary filter:"
+    )
+    print(
+        "  inside: "
+        f"{boundary_summary['inside_municipality']}"
+    )
+    print(
+        "  outside: "
+        f"{boundary_summary['outside_municipality']}"
+    )
+    print(
+        "  usable before: "
+        f"{boundary_summary['usable_before_boundary_filter']}"
+    )
+    print(
+        "  usable excluded outside: "
+        f"{boundary_summary['usable_excluded_outside_municipality']}"
+    )
+    print(
+        "  usable after: "
+        f"{boundary_summary['usable_after_boundary_filter']}"
     )
 
     print(

@@ -12,10 +12,6 @@ FEATURES_ACCESSIBILITY_DIR = (
     ROOT / "data" / "features" / "accessibility"
 )
 
-PROCESSED_SERVICES_DIR = (
-    ROOT / "data" / "processed" / "services"
-)
-
 FEATURES_COMPARISON_DIR = (
     ROOT / "data" / "features" / "comparison"
 )
@@ -119,11 +115,6 @@ def get_paths(args):
         / args.municipality_code
     )
 
-    service_dir = (
-        PROCESSED_SERVICES_DIR
-        / args.municipality_code
-    )
-
     health_label = (
         args.health_reference_date
         .strftime("%Y%m%d")
@@ -164,17 +155,21 @@ def get_paths(args):
                 f"osm_only_{args.census_year}.json"
             ),
 
+        # Count the exact service supply consumed by the accessibility
+        # algorithm, after municipality-boundary eligibility and network
+        # snapping. Using the pre-filter canonical layer here would make the
+        # reported service counts inconsistent with the routing results.
         "services_enriched":
-            service_dir
+            acc_dir
             / (
-                "service_sites_"
+                "service_network_nodes_"
                 f"{args.school_year}_"
                 f"{health_label}.parquet"
             ),
 
         "services_osm":
-            service_dir
-            / "service_sites_osm_only.parquet",
+            acc_dir
+            / "service_network_nodes_osm_only.parquet",
     }
 
 

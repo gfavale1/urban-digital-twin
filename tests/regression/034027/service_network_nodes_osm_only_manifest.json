@@ -1,0 +1,43 @@
+{
+  "generated_at_utc": "2026-09-27T17:20:05.147752+00:00",
+  "municipality_code": "034027",
+  "service_layer": "osm_only",
+  "municipality_boundary_filter": {
+    "boundary_source": "/mnt/c/Users/faval/Desktop/urban-digital-twin/data/processed/istat/034027_census_areas_2021.parquet",
+    "policy": "municipality_only_supply; points exactly on the boundary are included via covers()",
+    "service_sites_total": 193,
+    "inside_municipality": 186,
+    "outside_municipality": 7,
+    "usable_before_boundary_filter": 193,
+    "usable_excluded_outside_municipality": 7,
+    "usable_after_boundary_filter": 186
+  },
+  "inputs": {
+    "services": "/mnt/c/Users/faval/Desktop/urban-digital-twin/data/processed/services/034027/service_sites_osm_only.parquet",
+    "nodes": "/mnt/c/Users/faval/Desktop/urban-digital-twin/data/processed/osm/034027/walk_nodes.parquet",
+    "edges": "/mnt/c/Users/faval/Desktop/urban-digital-twin/data/processed/osm/034027/walk_edges.parquet"
+  },
+  "metric_crs": "EPSG:32632",
+  "network": {
+    "component_count": 234,
+    "largest_component_id": "WCC_0001",
+    "largest_component_size": 20089
+  },
+  "service_sites_total": 193,
+  "service_sites_usable": 186,
+  "service_sites_on_largest_component": 171,
+  "service_sites_outside_largest_component": 15,
+  "snap_outlier_count": 0,
+  "max_snap_distance_m": 1000.0,
+  "snap_distance_m": {
+    "min": 1.0659506172745783,
+    "median": 25.975462969515196,
+    "mean": 33.56906996009564,
+    "max": 146.01010086467747
+  },
+  "methodology": {
+    "snapping": "Each usable service site is snapped to the nearest pedestrian-network node in a metric CRS.",
+    "components": "The weakly connected component of the snapped node is preserved to support explicit reachability checks during accessibility analysis.",
+    "outliers": "Services farther than max_snap_distance_m from their nearest pedestrian node are not silently discarded; they are marked as snap_outlier for QA."
+  }
+}
