@@ -209,7 +209,7 @@ def commands_for_stage(
     if stage == "health":
         return [
             script_command(
-                "src/transformation/build_health_silver.py",
+                "src/ingestion/health.py",
                 "--municipality-code",
                 code,
                 "--reference-date",
@@ -219,7 +219,7 @@ def commands_for_stage(
             ),
 
             script_command(
-                "src/matching/match_health_sites_osm.py",
+                "src/matching/health.py",
                 "--municipality-code",
                 code,
                 "--pharmacy-reference-date",
@@ -229,17 +229,9 @@ def commands_for_stage(
             ),
 
             script_command(
-                "src/quality/qa_health_sites.py",
-                "--municipality-code",
-                code,
-                "--pharmacy-reference-date",
-                config.health_reference_date,
-                "--hospital-year",
-                config.hospital_year,
-            ),
-
-            script_command(
-                "src/transformation/finalize_health_sites.py",
+                "src/transformation/health.py",
+                "--step",
+                "prepare",
                 "--municipality-code",
                 code,
                 "--pharmacy-reference-date",
