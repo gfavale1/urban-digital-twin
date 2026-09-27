@@ -225,31 +225,108 @@ def qa_query_nominatim(session, query, municipality):
     return response.json()
 
 def qa_municipality_match_score(candidate, municipality_name):
-    address = candidate.get('address', {})
-    candidate_values = [address.get('city'), address.get('town'), address.get('village'), address.get('municipality')]
     target = qa_ascii_normalize(municipality_name)
-    best = 0.0
-    for value in candidate_values:
-        if value:
-            best = max(best, fuzz.ratio(qa_ascii_normalize(value), target))
-    return best
+
+    if not target:
+        return None
+
+    address = candidate.get('address', {}) or {}
+
+    candidate_values = [
+        address.get('city'),
+        address.get('town'),
+        address.get('village'),
+        address.get('municipality'),
+    ]
+
+    scores = [
+        float(
+            fuzz.ratio(
+                qa_ascii_normalize(value),
+                target,
+            )
+        )
+        for value in candidate_values
+        if qa_normalize_text(value)
+    ]
+
+    return max(scores) if scores else None
+
 
 def qa_address_match_score(candidate, target_address):
+    target_address = qa_normalize_text(target_address)
+
     if not target_address:
-        return 0.0
-    display_name = qa_normalize_text(candidate.get('display_name'))
-    return float(fuzz.token_set_ratio(qa_ascii_normalize(target_address), qa_ascii_normalize(display_name)))
+        return None
+
+    display_name = qa_normalize_text(
+        candidate.get('display_name')
+    )
+
+    if not display_name:
+        return None
+
+    return float(
+        fuzz.token_set_ratio(
+            qa_ascii_normalize(target_address),
+            qa_ascii_normalize(display_name),
+        )
+    )
+
 
 def qa_name_match_score(candidate, target_name):
+    target_name = qa_normalize_text(target_name)
+
     if not target_name:
-        return 0.0
+        return None
+
     namedetails = candidate.get('namedetails', {}) or {}
-    possible_names = [namedetails.get('name'), candidate.get('name'), candidate.get('display_name')]
-    scores = []
-    for value in possible_names:
-        if value:
-            scores.append(fuzz.token_set_ratio(qa_ascii_normalize(target_name), qa_ascii_normalize(value)))
-    return float(max(scores)) if scores else 0.0
+
+    possible_names = [
+        namedetails.get('name'),
+        candidate.get('name'),
+        candidate.get('display_name'),
+    ]
+
+    scores = [
+        float(
+            fuzz.token_set_ratio(
+                qa_ascii_normalize(target_name),
+                qa_ascii_normalize(value),
+            )
+        )
+        for value in possible_names
+        if qa_normalize_text(value)
+    ]
+
+    return max(scores) if scores else None
+
+
+def qa_weighted_available_score(evidences):
+    """Weighted score over available evidence only."""
+
+    available = [
+        (float(score), float(weight))
+        for score, weight in evidences
+        if score is not None
+    ]
+
+    if not available:
+        return None
+
+    total_weight = sum(
+        weight
+        for _, weight in available
+    )
+
+    if total_weight <= 0:
+        return None
+
+    return sum(
+        score * weight
+        for score, weight in available
+    ) / total_weight
+
 
 def qa_candidate_resolution(candidate):
     addresstype = qa_normalize_text(candidate.get('addresstype')).lower()
@@ -262,15 +339,48 @@ def qa_candidate_resolution(candidate):
     return 'generic_candidate'
 
 def qa_score_candidate(candidate, row, municipality_name):
-    municipality_score = qa_municipality_match_score(candidate, municipality_name)
-    address_score = qa_address_match_score(candidate, qa_normalize_text(row.get('address')))
-    name_score = qa_name_match_score(candidate, qa_normalize_text(row.get('name')))
-    subcategory = qa_normalize_text(row.get('subcategory'))
+    municipality_score = qa_municipality_match_score(
+        candidate,
+        municipality_name,
+    )
+
+    address_score = qa_address_match_score(
+        candidate,
+        row.get('address'),
+    )
+
+    name_score = qa_name_match_score(
+        candidate,
+        row.get('name'),
+    )
+
+    subcategory = qa_normalize_text(
+        row.get('subcategory')
+    )
+
     if subcategory == 'hospital':
-        total = 0.45 * address_score + 0.35 * name_score + 0.2 * municipality_score
+        total = qa_weighted_available_score(
+            [
+                (address_score, 0.45),
+                (name_score, 0.35),
+                (municipality_score, 0.20),
+            ]
+        )
     else:
-        total = 0.65 * address_score + 0.15 * name_score + 0.2 * municipality_score
-    return {'score': float(total), 'municipality_score': float(municipality_score), 'address_score': float(address_score), 'name_score': float(name_score)}
+        total = qa_weighted_available_score(
+            [
+                (address_score, 0.65),
+                (name_score, 0.15),
+                (municipality_score, 0.20),
+            ]
+        )
+
+    return {
+        'score': total,
+        'municipality_score': municipality_score,
+        'address_score': address_score,
+        'name_score': name_score,
+    }
 
 def qa_best_geocoder_candidate(session, cache, cache_file, row, municipality, refresh):
     queries = qa_build_queries(row, municipality['name'])
@@ -285,8 +395,23 @@ def qa_best_geocoder_candidate(session, cache, cache_file, row, municipality, re
             qa_save_cache(cache_file, cache)
             time.sleep(qa_REQUEST_DELAY_SECONDS)
         for candidate in results:
-            scored = qa_score_candidate(candidate, row, municipality['name'])
-            all_candidates.append({'query': query, 'candidate': candidate, **scored})
+            scored = qa_score_candidate(
+                candidate,
+                row,
+                municipality['name'],
+            )
+
+            if scored['score'] is None:
+                continue
+
+            all_candidates.append(
+                {
+                    'query': query,
+                    'candidate': candidate,
+                    **scored,
+                }
+            )
+
     if not all_candidates:
         return None
     all_candidates.sort(key=lambda item: item['score'], reverse=True)
@@ -306,7 +431,14 @@ def qa_classify_result(row, best):
     if source_present:
         distance = qa_haversine_m(row['source_latitude'], row['source_longitude'], geocoder_latitude, geocoder_longitude)
     resolution = qa_candidate_resolution(candidate)
-    strong_candidate = best['municipality_score'] >= 80 and best['address_score'] >= 70 and (best['score'] >= 72)
+    strong_candidate = (
+        best['municipality_score'] is not None
+        and best['municipality_score'] >= 80
+        and best['address_score'] is not None
+        and best['address_score'] >= 70
+        and best['score'] is not None
+        and best['score'] >= 72
+    )
     if not source_present:
         if strong_candidate:
             return (resolution, 'missing_source_coordinate_with_strong_candidate')
@@ -350,7 +482,7 @@ def qa_audit_records(records, municipality, validate_all, refresh):
         if bool(row['source_coordinate_present']):
             distance = qa_haversine_m(row['source_latitude'], row['source_longitude'], geocoder_latitude, geocoder_longitude)
         status, reason = qa_classify_result(row, best)
-        outputs.append({**base, 'geocoder_query': best['query'], 'geocoder_display_name': candidate.get('display_name'), 'geocoder_latitude': geocoder_latitude, 'geocoder_longitude': geocoder_longitude, 'geocoder_type': candidate.get('type'), 'geocoder_addresstype': candidate.get('addresstype'), 'geocoder_score': round(best['score'], 2), 'geocoder_address_score': round(best['address_score'], 2), 'geocoder_name_score': round(best['name_score'], 2), 'geocoder_municipality_score': round(best['municipality_score'], 2), 'source_geocoder_distance_m': round(distance, 2) if distance is not None else None, 'qa_status': status, 'qa_reason': reason})
+        outputs.append({**base, 'geocoder_query': best['query'], 'geocoder_display_name': candidate.get('display_name'), 'geocoder_latitude': geocoder_latitude, 'geocoder_longitude': geocoder_longitude, 'geocoder_type': candidate.get('type'), 'geocoder_addresstype': candidate.get('addresstype'), 'geocoder_score': round(best['score'], 2) if best['score'] is not None else None, 'geocoder_address_score': round(best['address_score'], 2) if best['address_score'] is not None else None, 'geocoder_name_score': round(best['name_score'], 2) if best['name_score'] is not None else None, 'geocoder_municipality_score': round(best['municipality_score'], 2) if best['municipality_score'] is not None else None, 'source_geocoder_distance_m': round(distance, 2) if distance is not None else None, 'qa_status': status, 'qa_reason': reason})
     return pd.DataFrame(outputs)
 
 def qa_main():
