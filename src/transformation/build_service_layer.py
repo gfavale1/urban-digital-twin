@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 PROCESSED_MIM_DIR = ROOT / "data" / "processed" / "mim"
 PROCESSED_SALUTE_DIR = ROOT / "data" / "processed" / "salute"
+FEATURES_SALUTE_DIR = ROOT / "data" / "features" / "salute"
 
 PROCESSED_SERVICES_DIR = ROOT / "data" / "processed" / "services"
 FEATURES_SERVICES_DIR = ROOT / "data" / "features" / "services"
@@ -55,7 +56,7 @@ def parse_args():
     parser.add_argument(
         "--municipality-code",
         required=True,
-        help="Codice ISTAT comunale a 6 cifre, es. 077014.",
+        help="Codice ISTAT comunale a 6 cifre.",
     )
 
     parser.add_argument(
@@ -222,7 +223,107 @@ def health_input_path(args):
     )
 
 
+def health_manifest_path(args):
+    label = (
+        args.health_reference_date
+        .strftime("%Y%m%d")
+    )
+
+    return (
+        FEATURES_SALUTE_DIR
+        / args.municipality_code
+        / f"health_sites_final_{label}_manifest.json"
+    )
+
+
+def validate_health_snapshot(args):
+    """
+    Verify that the Health layer consumed by the canonical Service layer
+    was built with the temporal parameters requested by the pipeline.
+    """
+    manifest_path = health_manifest_path(args)
+
+    if not manifest_path.exists():
+        raise FileNotFoundError(
+            "Manifest Health non trovato: "
+            f"{manifest_path}"
+        )
+
+    manifest = json.loads(
+        manifest_path.read_text(
+            encoding="utf-8"
+        )
+    )
+
+    expected_date = (
+        args.health_reference_date
+        .date()
+        .isoformat()
+    )
+
+    actual_code = str(
+        manifest.get(
+            "municipality_code",
+            "",
+        )
+    ).strip().zfill(6)
+
+    actual_date = str(
+        manifest.get(
+            "pharmacy_reference_date",
+            "",
+        )
+    ).strip()
+
+    actual_hospital_year = str(
+        manifest.get(
+            "hospital_reference_year",
+            "",
+        )
+    ).strip()
+
+    expected_hospital_year = str(
+        args.hospital_year
+    ).strip()
+
+    errors = []
+
+    if actual_code != args.municipality_code:
+        errors.append(
+            "municipality_code: "
+            f"atteso {args.municipality_code}, "
+            f"trovato {actual_code or '<missing>'}"
+        )
+
+    if actual_date != expected_date:
+        errors.append(
+            "pharmacy_reference_date: "
+            f"atteso {expected_date}, "
+            f"trovato {actual_date or '<missing>'}"
+        )
+
+    if actual_hospital_year != expected_hospital_year:
+        errors.append(
+            "hospital_reference_year: "
+            f"atteso {expected_hospital_year}, "
+            f"trovato {actual_hospital_year or '<missing>'}"
+        )
+
+    if errors:
+        raise RuntimeError(
+            "Health snapshot incompatibile con i parametri "
+            "del Service layer:\n  - "
+            + "\n  - ".join(errors)
+        )
+
+    return manifest_path
+
+
 def load_inputs(args):
+    health_manifest = validate_health_snapshot(
+        args
+    )
+
     school_path = school_input_path(
         args
     )
