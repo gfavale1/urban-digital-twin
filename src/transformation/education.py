@@ -732,7 +732,7 @@ def building_fusion_fuse_row(
 
             "final_reason":
                 (
-                    "Geocoder dentro Matera con indirizzo restituito "
+                    "Geocoder nel comune target con indirizzo restituito "
                     "coerente con l'indirizzo ufficiale MIM."
                 ),
         }
@@ -1008,7 +1008,7 @@ def building_fusion_print_summary(
     )
 
     print(
-        "\nEdifici Matera:"
+        "\nEdifici nel comune target:"
     )
     print(
         f"  validati con evidenza forte: {validated_count}"

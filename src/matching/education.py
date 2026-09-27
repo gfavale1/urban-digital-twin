@@ -4262,7 +4262,7 @@ def building_geocode_geocode_building(
     boundary_metric,
 ):
     # Gli edifici ufficialmente appartenenti ad altro comune
-    # restano nel dataset, ma non vengono forzati dentro Matera.
+    # restano nel dataset, ma non vengono forzati dentro il comune target.
     building_municipality = (
         str(
             building[
@@ -4358,7 +4358,6 @@ def building_geocode_geocode_building(
             municipality[
                 "name"
             ],
-            "Basilicata",
             "Italia",
         ]
 
@@ -4905,7 +4904,6 @@ def building_match_normalize_address(value):
         return None
 
     replacements = {
-        "PIAZZA GIOVANNI SEMERIA": "PIAZZA SEMERIA",
         "P ZZA": "PIAZZA",
         "P ZA": "PIAZZA",
         "V LE": "VIALE",
