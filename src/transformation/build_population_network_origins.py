@@ -423,9 +423,17 @@ def build_network_components(
         )
     )
 
+    # Deterministic component ordering:
+    # largest components first; equal-sized components are ordered
+    # by their lexicographically smallest network node ID.
     components.sort(
-        key=len,
-        reverse=True,
+        key=lambda component: (
+            -len(component),
+            min(
+                str(node_id)
+                for node_id in component
+            ),
+        ),
     )
 
     component_map = {}

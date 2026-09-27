@@ -31,7 +31,7 @@ def parse_args():
     parser.add_argument(
         "--municipality-code",
         required=True,
-        help="Codice ISTAT comunale a 6 cifre, es. 077014.",
+        help="Codice ISTAT comunale a 6 cifre.",
     )
 
     parser.add_argument(
@@ -59,6 +59,16 @@ def parse_args():
         help=(
             "Layer dei servizi da usare nell'analisi. "
             "Default: enriched."
+        ),
+    )
+
+    parser.add_argument(
+        "--walking-speed-m-s",
+        type=float,
+        default=1.4,
+        help=(
+            "Velocità pedonale attesa usata per i segmenti di snapping. "
+            "La rete deve essere coerente con questo valore. Default: 1.4."
         ),
     )
 
@@ -101,6 +111,14 @@ def parse_args():
     ):
         raise ValueError(
             "--thresholds-min deve contenere valori positivi."
+        )
+
+    if (
+        not math.isfinite(args.walking_speed_m_s)
+        or args.walking_speed_m_s <= 0
+    ):
+        raise ValueError(
+            "--walking-speed-m-s deve essere > 0."
         )
 
     return args
@@ -216,6 +234,23 @@ def load_inputs(args):
 
 
 def build_graph(nodes, edges):
+    required_node_columns = {
+        "source_record_id",
+    }
+
+    missing_nodes = (
+        required_node_columns
+        - set(nodes.columns)
+    )
+
+    if missing_nodes:
+        raise RuntimeError(
+            "Colonne OSM nodes mancanti: "
+            + ", ".join(
+                sorted(missing_nodes)
+            )
+        )
+
     required_edge_columns = {
         "source_osm_node",
         "target_osm_node",
@@ -236,19 +271,33 @@ def build_graph(nodes, edges):
             )
         )
 
-    graph = nx.DiGraph()
+    node_ids = [
+        node_id
+        for node_id in (
+            nodes["source_record_id"]
+            .map(normalize_node_id)
+        )
+        if node_id is not None
+    ]
 
-    for node_id in (
-        nodes["source_record_id"]
-        .map(normalize_node_id)
-    ):
-        if node_id is not None:
-            graph.add_node(
-                node_id
-            )
+    if not node_ids:
+        raise RuntimeError(
+            "Dataset OSM nodes privo di identificativi validi."
+        )
+
+    if len(node_ids) != len(set(node_ids)):
+        raise RuntimeError(
+            "source_record_id duplicati nel dataset OSM nodes."
+        )
+
+    node_id_set = set(node_ids)
+
+    graph = nx.DiGraph()
+    graph.add_nodes_from(node_ids)
 
     bad_edges = 0
     duplicate_pairs = 0
+    invalid_endpoints = set()
 
     for _, edge in edges.iterrows():
         source = normalize_node_id(
@@ -285,6 +334,18 @@ def build_graph(nodes, edges):
             bad_edges += 1
             continue
 
+        if source not in node_id_set:
+            invalid_endpoints.add(source)
+
+        if target not in node_id_set:
+            invalid_endpoints.add(target)
+
+        if (
+            source not in node_id_set
+            or target not in node_id_set
+        ):
+            continue
+
         if graph.has_edge(
             source,
             target,
@@ -295,22 +356,29 @@ def build_graph(nodes, edges):
                 source
             ][target]
 
-            if (
-                walking_time_s
-                < current[
-                    "walking_time_s"
-                ]
-            ):
+            current_pair = (
+                float(
+                    current[
+                        "walking_time_s"
+                    ]
+                ),
+                float(
+                    current[
+                        "length_m"
+                    ]
+                ),
+            )
+
+            candidate_pair = (
+                walking_time_s,
+                length_m,
+            )
+
+            if candidate_pair < current_pair:
                 current[
                     "walking_time_s"
                 ] = walking_time_s
 
-            if (
-                length_m
-                < current[
-                    "length_m"
-                ]
-            ):
                 current[
                     "length_m"
                 ] = length_m
@@ -322,6 +390,19 @@ def build_graph(nodes, edges):
                 walking_time_s=walking_time_s,
                 length_m=length_m,
             )
+
+    if invalid_endpoints:
+        sample = sorted(
+            invalid_endpoints
+        )[:20]
+
+        raise RuntimeError(
+            "Gli edge OSM contengono endpoint assenti "
+            "dal dataset dei nodi. "
+            f"Totale endpoint incoerenti: "
+            f"{len(invalid_endpoints)}; "
+            f"esempi: {sample}"
+        )
 
     if graph.number_of_edges() == 0:
         raise RuntimeError(
@@ -381,15 +462,29 @@ def prepare_origins(origins):
         .map(normalize_node_id)
     )
 
-    df["assigned_population"] = (
-        pd.to_numeric(
-            df[
-                "assigned_population"
-            ],
-            errors="coerce",
+    if df["network_node_id"].isna().any():
+        raise RuntimeError(
+            "Alcuni population origins non hanno network_node_id valido."
         )
-        .fillna(0.0)
-        .astype(float)
+
+    assigned_population = pd.to_numeric(
+        df["assigned_population"],
+        errors="coerce",
+    )
+
+    if assigned_population.isna().any():
+        raise RuntimeError(
+            "Alcuni population origins hanno assigned_population mancante "
+            "o non numerica."
+        )
+
+    if (assigned_population < 0).any():
+        raise RuntimeError(
+            "Alcuni population origins hanno assigned_population negativa."
+        )
+
+    df["assigned_population"] = (
+        assigned_population.astype(float)
     )
 
     if (
@@ -401,8 +496,48 @@ def prepare_origins(origins):
                 "fallback_snap_distance_m"
             ],
             errors="coerce",
-        ).fillna(0.0)
+        )
+
+        fallback_rows = (
+            df["assignment_method"]
+            == "representative_point_nearest_node"
+        )
+
+        invalid_fallback = (
+            fallback_rows
+            & fallback.isna()
+        )
+
+        if invalid_fallback.any():
+            raise RuntimeError(
+                "Alcuni origins assegnati tramite fallback non hanno "
+                "fallback_snap_distance_m valido."
+            )
+
+        negative_fallback = (
+            fallback.notna()
+            & (fallback < 0)
+        )
+
+        if negative_fallback.any():
+            raise RuntimeError(
+                "Alcuni origins hanno fallback_snap_distance_m negativo."
+            )
+
+        fallback = fallback.fillna(0.0)
+
     else:
+        fallback_rows = (
+            df["assignment_method"]
+            == "representative_point_nearest_node"
+        )
+
+        if fallback_rows.any():
+            raise RuntimeError(
+                "fallback_snap_distance_m assente nonostante la presenza "
+                "di origins assegnati tramite fallback."
+            )
+
         fallback = pd.Series(
             0.0,
             index=df.index,
@@ -410,9 +545,7 @@ def prepare_origins(origins):
 
     df[
         "origin_snap_distance_m"
-    ] = fallback.clip(
-        lower=0.0
-    )
+    ] = fallback.astype(float)
 
     return df.reset_index(
         drop=True
@@ -447,20 +580,14 @@ def prepare_services(services):
         ]
     ].copy()
 
+    if df.empty:
+        raise RuntimeError(
+            "Nessun servizio utilizzabile per accessibility."
+        )
+
     df["network_node_id"] = (
         df["network_node_id"]
         .map(normalize_node_id)
-    )
-
-    df["snap_distance_m"] = (
-        pd.to_numeric(
-            df["snap_distance_m"],
-            errors="coerce",
-        )
-        .fillna(0.0)
-        .clip(
-            lower=0.0
-        )
     )
 
     if (
@@ -472,9 +599,75 @@ def prepare_services(services):
             "Alcuni servizi utilizzabili non hanno network_node_id."
         )
 
+    snap_distance = pd.to_numeric(
+        df["snap_distance_m"],
+        errors="coerce",
+    )
+
+    if snap_distance.isna().any():
+        raise RuntimeError(
+            "Alcuni servizi utilizzabili hanno snap_distance_m "
+            "mancante o non numerica."
+        )
+
+    if (snap_distance < 0).any():
+        raise RuntimeError(
+            "Alcuni servizi utilizzabili hanno snap_distance_m negativo."
+        )
+
+    df["snap_distance_m"] = (
+        snap_distance.astype(float)
+    )
+
     return df.reset_index(
         drop=True
     )
+
+
+def validate_network_membership(
+    graph,
+    origins,
+    services,
+):
+    graph_nodes = set(
+        graph.nodes
+    )
+
+    origin_nodes = set(
+        origins["network_node_id"]
+        .dropna()
+        .astype(str)
+    )
+
+    service_nodes = set(
+        services["network_node_id"]
+        .dropna()
+        .astype(str)
+    )
+
+    missing_origins = (
+        origin_nodes
+        - graph_nodes
+    )
+
+    if missing_origins:
+        raise RuntimeError(
+            "Alcuni origin nodes non appartengono al grafo pedonale. "
+            f"Totale: {len(missing_origins)}; "
+            f"esempi: {sorted(missing_origins)[:20]}"
+        )
+
+    missing_services = (
+        service_nodes
+        - graph_nodes
+    )
+
+    if missing_services:
+        raise RuntimeError(
+            "Alcuni service nodes non appartengono al grafo pedonale. "
+            f"Totale: {len(missing_services)}; "
+            f"esempi: {sorted(missing_services)[:20]}"
+        )
 
 
 def build_service_groups(services):
@@ -570,157 +763,6 @@ def origin_index_by_node(origins):
     return mapping
 
 
-def calculate_group_accessibility(
-    reverse_graph,
-    origins,
-    services,
-    thresholds_min,
-):
-    metrics = (
-        initialize_group_metrics(
-            len(origins),
-            thresholds_min,
-        )
-    )
-
-    origins_by_node = (
-        origin_index_by_node(
-            origins
-        )
-    )
-
-    origin_snap = (
-        origins[
-            "origin_snap_distance_m"
-        ]
-        .to_numpy(
-            dtype=float
-        )
-    )
-
-    max_threshold_s = (
-        max(
-            thresholds_min
-        )
-        * 60.0
-    )
-
-    for _, service in services.iterrows():
-        service_node = (
-            service[
-                "network_node_id"
-            ]
-        )
-
-        if (
-            service_node
-            not in reverse_graph
-        ):
-            continue
-
-        service_snap_m = float(
-            service[
-                "snap_distance_m"
-            ]
-        )
-
-        service_id = (
-            service[
-                "service_site_id"
-            ]
-        )
-
-        # Full shortest-path tree for nearest-service metrics.
-        time_lengths = (
-            nx.single_source_dijkstra_path_length(
-                reverse_graph,
-                source=service_node,
-                weight="walking_time_s",
-            )
-        )
-
-        # Independent length metric; current walking-time graph is constant
-        # speed, but preserving both weights keeps the method extensible.
-        distance_lengths = (
-            nx.single_source_dijkstra_path_length(
-                reverse_graph,
-                source=service_node,
-                weight="length_m",
-            )
-        )
-
-        for (
-            origin_node,
-            row_indices,
-        ) in origins_by_node.items():
-            if (
-                origin_node
-                not in time_lengths
-            ):
-                continue
-
-            network_time_s = float(
-                time_lengths[
-                    origin_node
-                ]
-            )
-
-            network_distance_m = float(
-                distance_lengths.get(
-                    origin_node,
-                    np.nan,
-                )
-            )
-
-            for row_index in row_indices:
-                origin_snap_m = float(
-                    origin_snap[
-                        row_index
-                    ]
-                )
-
-                # Snap segments use the effective speed implied by the
-                # network around 1.4 m/s. For thresholding we recover the
-                # global speed from network distance/time downstream.
-                # Here only distance is accumulated; snap time is filled
-                # after speed validation in apply_snap_time().
-                total_distance_m = (
-                    network_distance_m
-                    + origin_snap_m
-                    + service_snap_m
-                )
-
-                if (
-                    total_distance_m
-                    < metrics[
-                        "nearest_distance_m"
-                    ][row_index]
-                ):
-                    # Temporary nearest by distance. Since the current graph
-                    # uses a constant walking speed, this is equivalent to
-                    # nearest by walking time.
-                    metrics[
-                        "nearest_distance_m"
-                    ][row_index] = (
-                        total_distance_m
-                    )
-
-                    metrics[
-                        "nearest_service_site_id"
-                    ][row_index] = (
-                        service_id
-                    )
-
-                # Store network time plus distances separately for now.
-                # Threshold counts are finalized later once snap segments
-                # have been converted to seconds.
-                # We keep per-service tuples locally by appending to a
-                # temporary hidden list in the metrics object.
-                pass
-
-    return metrics
-
-
 def infer_walking_speed(edges):
     valid = edges.loc[
         pd.to_numeric(
@@ -803,6 +845,77 @@ def infer_walking_speed(edges):
                 p95,
         },
     )
+
+
+def validate_walking_speed_consistency(
+    edges,
+    expected_speed_m_s,
+    atol=1e-6,
+    rtol=1e-6,
+):
+    lengths = pd.to_numeric(
+        edges["length_m"],
+        errors="coerce",
+    )
+
+    times = pd.to_numeric(
+        edges["walking_time_s"],
+        errors="coerce",
+    )
+
+    valid = (
+        lengths.notna()
+        & times.notna()
+        & np.isfinite(lengths)
+        & np.isfinite(times)
+        & (lengths >= 0)
+        & (times > 0)
+    )
+
+    if not valid.any():
+        raise RuntimeError(
+            "Nessun arco valido per verificare walking speed."
+        )
+
+    speeds = (
+        lengths.loc[valid]
+        / times.loc[valid]
+    ).astype(float)
+
+    consistent = np.isclose(
+        speeds.to_numpy(),
+        float(expected_speed_m_s),
+        atol=atol,
+        rtol=rtol,
+    )
+
+    inconsistent_count = int(
+        (~consistent).sum()
+    )
+
+    if inconsistent_count:
+        deviations = np.abs(
+            speeds.to_numpy()
+            - float(expected_speed_m_s)
+        )
+
+        raise RuntimeError(
+            "La rete pedonale non è coerente con "
+            f"--walking-speed-m-s={expected_speed_m_s}. "
+            f"Archi incoerenti: {inconsistent_count}/{len(speeds)}; "
+            f"deviazione massima={float(deviations.max()):.9f} m/s."
+        )
+
+    return {
+        "expected_m_s":
+            float(expected_speed_m_s),
+
+        "validated_edge_count":
+            int(len(speeds)),
+
+        "inconsistent_edge_count":
+            0,
+    }
 
 
 def calculate_group_accessibility_full(
@@ -1364,6 +1477,12 @@ def main():
         edges,
     )
 
+    validate_network_membership(
+        graph,
+        origins,
+        services,
+    )
+
     reverse_graph = (
         graph.reverse(
             copy=False
@@ -1371,10 +1490,21 @@ def main():
     )
 
     (
-        walking_speed_m_s,
+        inferred_walking_speed_m_s,
         speed_summary,
     ) = infer_walking_speed(
         edges
+    )
+
+    speed_validation = (
+        validate_walking_speed_consistency(
+            edges,
+            args.walking_speed_m_s,
+        )
+    )
+
+    walking_speed_m_s = float(
+        args.walking_speed_m_s
     )
 
     groups = build_service_groups(
@@ -1552,8 +1682,14 @@ def main():
         "graph":
             graph_summary,
 
+        "walking_speed_requested_m_s":
+            walking_speed_m_s,
+
         "walking_speed_inferred":
             speed_summary,
+
+        "walking_speed_validation":
+            speed_validation,
 
         "service_group_counts": {
             name:
@@ -1584,8 +1720,8 @@ def main():
                 (
                     "Origin fallback snap distance and service-to-network "
                     "snap distance are added to route length and converted "
-                    "to time using the median effective walking speed "
-                    "inferred from the network."
+                    "to time using the configured walking speed after "
+                    "verifying consistency with the network edge weights."
                 ),
 
             "unreachable":
@@ -1649,8 +1785,13 @@ def main():
     )
 
     print(
-        "Walking speed inferred: "
+        "Walking speed configured: "
         f"{walking_speed_m_s:.4f} m/s"
+    )
+
+    print(
+        "Walking speed inferred: "
+        f"{inferred_walking_speed_m_s:.4f} m/s"
     )
 
     print(

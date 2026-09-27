@@ -27,7 +27,7 @@ def parse_args():
     parser.add_argument(
         "--municipality-code",
         required=True,
-        help="Codice ISTAT comunale a 6 cifre, es. 077014.",
+        help="Codice ISTAT comunale a 6 cifre.",
     )
 
     parser.add_argument(
@@ -79,6 +79,11 @@ def parse_args():
     args.health_reference_date = pd.Timestamp(
         args.health_reference_date
     ).normalize()
+
+    if args.max_snap_distance_m <= 0:
+        raise ValueError(
+            "--max-snap-distance-m deve essere > 0."
+        )
 
     return args
 
@@ -200,6 +205,11 @@ def prepare_nodes(nodes):
 
     nodes = nodes.copy()
 
+    if nodes.empty:
+        raise RuntimeError(
+            "Dataset OSM nodes vuoto."
+        )
+
     nodes["network_node_id"] = (
         nodes["source_record_id"]
         .map(normalize_node_id)
@@ -242,11 +252,17 @@ def add_network_components(
 
     graph = nx.DiGraph()
 
-    graph.add_nodes_from(
+    node_ids = set(
         nodes[
             "network_node_id"
         ].astype(str)
     )
+
+    graph.add_nodes_from(
+        node_ids
+    )
+
+    invalid_endpoints = set()
 
     for _, edge in edges.iterrows():
         source = normalize_node_id(
@@ -267,9 +283,32 @@ def add_network_components(
         ):
             continue
 
-        graph.add_edge(
-            source,
-            target,
+        if source not in node_ids:
+            invalid_endpoints.add(source)
+
+        if target not in node_ids:
+            invalid_endpoints.add(target)
+
+        if (
+            source in node_ids
+            and target in node_ids
+        ):
+            graph.add_edge(
+                source,
+                target,
+            )
+
+    if invalid_endpoints:
+        sample = sorted(
+            invalid_endpoints
+        )[:20]
+
+        raise RuntimeError(
+            "Gli edge OSM contengono endpoint assenti "
+            "dal dataset dei nodi. "
+            f"Totale endpoint incoerenti: "
+            f"{len(invalid_endpoints)}; "
+            f"esempi: {sample}"
         )
 
     components = list(
@@ -278,9 +317,17 @@ def add_network_components(
         )
     )
 
+    # Deterministic component ordering:
+    # largest components first; equal-sized components are ordered
+    # by their lexicographically smallest network node ID.
     components.sort(
-        key=len,
-        reverse=True,
+        key=lambda component: (
+            -len(component),
+            min(
+                str(node_id)
+                for node_id in component
+            ),
+        ),
     )
 
     component_map = {}
@@ -443,6 +490,26 @@ def snap_services(
             keep="first",
         )
         .copy()
+    )
+
+    snap_distance = pd.to_numeric(
+        joined["snap_distance_m"],
+        errors="coerce",
+    )
+
+    if snap_distance.isna().any():
+        raise RuntimeError(
+            "Alcuni servizi utilizzabili non hanno "
+            "snap_distance_m valido."
+        )
+
+    if (snap_distance < 0).any():
+        raise RuntimeError(
+            "Alcuni servizi hanno snap_distance_m negativo."
+        )
+
+    joined["snap_distance_m"] = (
+        snap_distance.astype(float)
     )
 
     joined[

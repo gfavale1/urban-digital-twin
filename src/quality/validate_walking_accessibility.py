@@ -21,6 +21,11 @@ def parse_args():
     parser.add_argument("--school-year", default="202425")
     parser.add_argument("--health-reference-date", default="2025-06-30")
     parser.add_argument(
+        "--service-layer",
+        choices=["enriched", "osm_only"],
+        default="enriched",
+    )
+    parser.add_argument(
         "--thresholds-min",
         nargs="+",
         type=int,
@@ -32,6 +37,26 @@ def parse_args():
         args.health_reference_date
     ).normalize()
     args.thresholds_min = sorted(set(args.thresholds_min))
+
+    if (
+        not args.municipality_code.isdigit()
+        or len(args.municipality_code) != 6
+    ):
+        raise ValueError(
+            "--municipality-code deve avere esattamente 6 cifre."
+        )
+
+    if (
+        not args.thresholds_min
+        or any(
+            threshold <= 0
+            for threshold in args.thresholds_min
+        )
+    ):
+        raise ValueError(
+            "--thresholds-min deve contenere valori positivi."
+        )
+
     return args
 
 
@@ -47,7 +72,15 @@ def main():
 
     base = FEATURES_ACCESSIBILITY_DIR / args.municipality_code
     health_label = args.health_reference_date.strftime("%Y%m%d")
-    suffix = f"{args.census_year}_{args.school_year}_{health_label}"
+
+    if args.service_layer == "osm_only":
+        suffix = f"osm_only_{args.census_year}"
+    else:
+        suffix = (
+            f"{args.census_year}_"
+            f"{args.school_year}_"
+            f"{health_label}"
+        )
 
     origins_path = base / f"walking_accessibility_origins_{suffix}.parquet"
     sections_path = base / f"walking_accessibility_sections_{suffix}.parquet"
@@ -64,6 +97,28 @@ def main():
 
     failures = []
     checks = []
+
+    if summary.get("service_layer") != args.service_layer:
+        failures.append(
+            "summary service_layer incompatibile: "
+            f"atteso {args.service_layer}, "
+            f"trovato {summary.get('service_layer')}"
+        )
+
+    summary_thresholds = sorted(
+        int(value)
+        for value in summary.get(
+            "thresholds_min",
+            [],
+        )
+    )
+
+    if summary_thresholds != args.thresholds_min:
+        failures.append(
+            "summary thresholds_min incompatibili: "
+            f"atteso {args.thresholds_min}, "
+            f"trovato {summary_thresholds}"
+        )
 
     population = float(origins["assigned_population"].sum())
     summary_population = float(municipality["population"])
@@ -214,6 +269,7 @@ def main():
     print(" WALKING ACCESSIBILITY QA")
     print("====================================")
     print(f"Comune: {args.municipality_code}")
+    print(f"Service layer: {args.service_layer}")
     print(f"Checks passed: {len(checks)}")
     print(f"Failures: {len(failures)}")
 
