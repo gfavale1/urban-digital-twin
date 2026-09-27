@@ -196,47 +196,7 @@ def commands_for_stage(
             script_command(
                 "src/transformation/education.py",
                 "--step",
-                "building-fusion",
-                "--municipality-code",
-                code,
-                "--building-year",
-                config.building_year,
-            ),
-
-            script_command(
-                "src/quality/"
-                "classify_unmatched_mim_schools.py",
-                "--municipality-code",
-                code,
-                "--school-year",
-                config.school_year,
-                "--building-year",
-                config.building_year,
-            ),
-
-            script_command(
-                "src/geocoding/"
-                "osm_street_school_fallback.py",
-                "--municipality-code",
-                code,
-                "--school-year",
-                config.school_year,
-                "--building-year",
-                config.building_year,
-            ),
-
-            script_command(
-                "src/geocoding/"
-                "resolve_remaining_school_services.py",
-                "--municipality-code",
-                code,
-                "--school-year",
-                config.school_year,
-            ),
-
-            script_command(
-                "src/transformation/"
-                "build_final_school_sites.py",
+                "prepare",
                 "--municipality-code",
                 code,
                 "--school-year",
