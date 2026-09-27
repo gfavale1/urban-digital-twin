@@ -168,20 +168,13 @@ def commands_for_stage(
     if stage == "education":
         return [
             script_command(
-                "src/ingestion/mim_schools_202425.py",
+                "src/ingestion/mim.py",
+                "--step",
+                "prepare",
                 "--municipality-code",
                 code,
                 "--municipality-name",
                 ctx.name_upper,
-                "--school-year",
-                config.school_year,
-            ),
-
-            script_command(
-                "src/ingestion/"
-                "mim_school_buildings_generalized.py",
-                "--municipality-code",
-                code,
                 "--school-year",
                 config.school_year,
                 "--building-year",
