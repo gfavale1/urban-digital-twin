@@ -46,7 +46,7 @@ def parse_args():
     parser.add_argument(
         "--municipality-code",
         required=True,
-        help="Codice ISTAT comunale a 6 cifre, es. 077014.",
+        help="Codice ISTAT comunale a 6 cifre.",
     )
 
     parser.add_argument(
@@ -254,10 +254,38 @@ def prepare_areas_and_observations(
         indicator=True,
     )
 
-    merged["has_observation"] = (
+    merged["has_observation_row"] = (
         merged["_merge"]
         == "both"
     )
+
+    # A census row is usable as population demand only when the
+    # population value is actually known. Missing population is
+    # unknown evidence, never zero population.
+    merged["has_observation"] = (
+        merged["has_observation_row"]
+        & merged["population"].notna()
+    )
+
+    negative_population = (
+        merged["population"].notna()
+        & (merged["population"] < 0)
+    )
+
+    if negative_population.any():
+        codes = (
+            merged.loc[
+                negative_population,
+                "census_section_code",
+            ]
+            .astype(str)
+            .tolist()
+        )
+
+        raise RuntimeError(
+            "Valori di population negativi nelle sezioni: "
+            f"{codes[:20]}"
+        )
 
     merged = merged.drop(
         columns=["_merge"]
@@ -340,6 +368,10 @@ def build_network_components(
 
     graph.add_nodes_from(node_ids)
 
+    node_id_set = set(node_ids)
+    invalid_endpoints = set()
+    valid_edges = []
+
     for _, edge in edges.iterrows():
         source = normalize_node_id(
             edge["source_osm_node"]
@@ -354,10 +386,36 @@ def build_network_components(
         ):
             continue
 
-        graph.add_edge(
-            source,
-            target,
+        if source not in node_id_set:
+            invalid_endpoints.add(source)
+
+        if target not in node_id_set:
+            invalid_endpoints.add(target)
+
+        if (
+            source in node_id_set
+            and target in node_id_set
+        ):
+            valid_edges.append(
+                (source, target)
+            )
+
+    if invalid_endpoints:
+        sample = sorted(
+            invalid_endpoints
+        )[:20]
+
+        raise RuntimeError(
+            "Gli edge OSM contengono endpoint assenti dal "
+            "dataset dei nodi. "
+            f"Totale endpoint incoerenti: "
+            f"{len(invalid_endpoints)}; "
+            f"esempi: {sample}"
         )
+
+    graph.add_edges_from(
+        valid_edges
+    )
 
     components = list(
         nx.weakly_connected_components(
@@ -765,6 +823,7 @@ def build_section_summary(
         "census_section_code",
         "section_type_code",
         "locality_type",
+        "has_observation_row",
         "has_observation",
         "population",
         "reference_date",

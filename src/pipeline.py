@@ -263,6 +263,8 @@ def commands_for_stage(
                 "build_population_network_origins.py",
                 "--municipality-code",
                 code,
+                "--census-year",
+                config.census_year,
             ),
         ]
 
