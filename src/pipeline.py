@@ -182,25 +182,9 @@ def commands_for_stage(
             ),
 
             script_command(
-                "src/ingestion/mim_school_locations.py",
-                "--municipality-code",
-                code,
-                "--school-year",
-                config.school_year,
-            ),
-
-            script_command(
-                "src/ingestion/"
-                "mim_school_building_geocode.py",
-                "--municipality-code",
-                code,
-                "--building-year",
-                config.building_year,
-            ),
-
-            script_command(
-                "src/ingestion/"
-                "mim_school_building_osm_match.py",
+                "src/matching/education.py",
+                "--step",
+                "prepare",
                 "--municipality-code",
                 code,
                 "--school-year",
@@ -210,8 +194,9 @@ def commands_for_stage(
             ),
 
             script_command(
-                "src/ingestion/"
-                "mim_school_building_fusion.py",
+                "src/transformation/education.py",
+                "--step",
+                "building-fusion",
                 "--municipality-code",
                 code,
                 "--building-year",
