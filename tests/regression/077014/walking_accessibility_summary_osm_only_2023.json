@@ -1,0 +1,82 @@
+{
+  "generated_at_utc": "2026-09-27T17:19:36.874708+00:00",
+  "municipality_code": "077014",
+  "service_layer": "osm_only",
+  "thresholds_min": [
+    10,
+    15,
+    20
+  ],
+  "inputs": {
+    "origins": "/mnt/c/Users/faval/Desktop/urban-digital-twin/data/features/accessibility/077014/population_network_origins_2023.parquet",
+    "services": "/mnt/c/Users/faval/Desktop/urban-digital-twin/data/features/accessibility/077014/service_network_nodes_osm_only.parquet",
+    "nodes": "/mnt/c/Users/faval/Desktop/urban-digital-twin/data/processed/osm/077014/walk_nodes.parquet",
+    "edges": "/mnt/c/Users/faval/Desktop/urban-digital-twin/data/processed/osm/077014/walk_edges.parquet"
+  },
+  "graph": {
+    "nodes": 6918,
+    "edges": 17354,
+    "bad_edges_skipped": 0,
+    "duplicate_directed_pairs_collapsed": 228
+  },
+  "walking_speed_requested_m_s": 1.4,
+  "walking_speed_inferred": {
+    "median_m_s": 1.4,
+    "p05_m_s": 1.4,
+    "p95_m_s": 1.4
+  },
+  "walking_speed_validation": {
+    "expected_m_s": 1.4,
+    "validated_edge_count": 17582,
+    "inconsistent_edge_count": 0
+  },
+  "service_group_counts": {
+    "school": 50,
+    "pharmacy": 20,
+    "hospital": 2
+  },
+  "methodology": {
+    "directionality": "Accessibility is computed from origin to service on the directed pedestrian graph by running Dijkstra from each service on the reversed graph.",
+    "weights": "walking_time_s is used for time accessibility and length_m for network distance.",
+    "snap_segments": "Origin fallback snap distance and service-to-network snap distance are added to route length and converted to time using the configured walking speed after verifying consistency with the network edge weights.",
+    "unreachable": "Origins with no directed path to a service group are preserved as unreachable rather than dropped.",
+    "groups": {
+      "school": "all canonical services with category=education",
+      "pharmacy": "canonical services with subcategory=pharmacy",
+      "hospital": "canonical services with subcategory=hospital"
+    }
+  },
+  "municipality_summary": {
+    "population": 59652.0,
+    "school_reachable_population": 57335.310390597784,
+    "school_unreachable_population": 2316.689609402216,
+    "school_reachable_share": 0.9611632533795645,
+    "school_weighted_mean_nearest_time_min": 7.632289571700452,
+    "school_population_within_10_min": 46902.06572340298,
+    "school_population_share_within_10_min": 0.7862614115771974,
+    "school_population_within_15_min": 52124.479391160254,
+    "school_population_share_within_15_min": 0.8738094178092981,
+    "school_population_within_20_min": 54418.473275123375,
+    "school_population_share_within_20_min": 0.9122656956199855,
+    "pharmacy_reachable_population": 57273.782933781724,
+    "pharmacy_unreachable_population": 2378.217066218276,
+    "pharmacy_reachable_share": 0.9601318134141642,
+    "pharmacy_weighted_mean_nearest_time_min": 10.318506802305143,
+    "pharmacy_population_within_10_min": 45366.3128444171,
+    "pharmacy_population_share_within_10_min": 0.7605162080804851,
+    "pharmacy_population_within_15_min": 51658.57318241267,
+    "pharmacy_population_share_within_15_min": 0.8659990139880083,
+    "pharmacy_population_within_20_min": 52967.485485792786,
+    "pharmacy_population_share_within_20_min": 0.8879414853784079,
+    "hospital_reachable_population": 57234.42579092458,
+    "hospital_unreachable_population": 2417.574209075421,
+    "hospital_reachable_share": 0.9594720343144334,
+    "hospital_weighted_mean_nearest_time_min": 48.37632727194304,
+    "hospital_population_within_10_min": 342.2760899549291,
+    "hospital_population_share_within_10_min": 0.005737881210268375,
+    "hospital_population_within_15_min": 1922.586927065441,
+    "hospital_population_share_within_15_min": 0.03223004973958025,
+    "hospital_population_within_20_min": 4390.121492784668,
+    "hospital_population_share_within_20_min": 0.07359554571153805
+  }
+}

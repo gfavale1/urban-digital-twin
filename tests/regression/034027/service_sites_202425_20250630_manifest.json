@@ -1,0 +1,69 @@
+{
+  "generated_at_utc": "2026-09-27T13:29:24.899286+00:00",
+  "municipality_code": "034027",
+  "inputs": {
+    "education": "/mnt/c/Users/faval/Desktop/urban-digital-twin/data/processed/mim/034027/school_sites_202425.parquet",
+    "health": "/mnt/c/Users/faval/Desktop/urban-digital-twin/data/processed/salute/034027/health_sites_final_20250630.parquet"
+  },
+  "total_service_sites": 180,
+  "usable_for_accessibility": 109,
+  "category_counts": {
+    "education": 118,
+    "health": 62
+  },
+  "subcategory_counts": {
+    "state_school_building": 63,
+    "pharmacy": 58,
+    "paritary_school": 55,
+    "hospital": 4
+  },
+  "confidence_counts": {
+    "medium": 59,
+    "high": 52,
+    "unresolved": 32,
+    "low": 19,
+    "medium_high": 14,
+    "review": 4
+  },
+  "coordinate_resolution_counts": {
+    "None": 42,
+    "site": 39,
+    "address": 35,
+    "street_anchor": 30,
+    "source_coordinate": 16,
+    "missing": 13,
+    "site_or_address": 5
+  },
+  "canonical_columns": [
+    "service_site_id",
+    "domain_service_site_id",
+    "category",
+    "subcategory",
+    "name",
+    "municipality_code",
+    "municipality_name",
+    "address",
+    "postal_code",
+    "longitude",
+    "latitude",
+    "source_system",
+    "source_dataset",
+    "source_record_id",
+    "reference_period",
+    "coordinate_source",
+    "coordinate_resolution",
+    "confidence",
+    "resolution_status",
+    "usable_for_accessibility",
+    "capacity_value",
+    "capacity_unit",
+    "provenance_json",
+    "geometry"
+  ],
+  "notes": [
+    "Il canonical Service layer contiene solo gli attributi comuni necessari agli algoritmi urbani.",
+    "Gli attributi specifici dei domini Education e Health rimangono nei rispettivi Silver e sono inoltre conservati in provenance_json.",
+    "capacity_value è valorizzato attualmente solo quando esiste una capacità direttamente interpretabile (es. posti letto ospedalieri).",
+    "La presenza nel canonical layer non implica automaticamente utilizzabilità: usare sempre usable_for_accessibility."
+  ]
+}

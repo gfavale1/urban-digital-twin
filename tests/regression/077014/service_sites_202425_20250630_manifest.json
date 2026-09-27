@@ -1,0 +1,69 @@
+{
+  "generated_at_utc": "2026-09-27T11:16:04.215012+00:00",
+  "municipality_code": "077014",
+  "inputs": {
+    "education": "/mnt/c/Users/faval/Desktop/urban-digital-twin/data/processed/mim/077014/school_sites_202425.parquet",
+    "health": "/mnt/c/Users/faval/Desktop/urban-digital-twin/data/processed/salute/077014/health_sites_final_20250630.parquet"
+  },
+  "total_service_sites": 74,
+  "usable_for_accessibility": 74,
+  "category_counts": {
+    "education": 56,
+    "health": 18
+  },
+  "subcategory_counts": {
+    "state_school_building": 51,
+    "pharmacy": 17,
+    "paritary_school": 4,
+    "state_school_without_building_registry": 1,
+    "hospital": 1
+  },
+  "confidence_counts": {
+    "high": 33,
+    "validated": 24,
+    "medium": 16,
+    "medium_high": 1
+  },
+  "coordinate_resolution_counts": {
+    "site": 18,
+    "site_or_address": 16,
+    "verified_school_site_point": 14,
+    "address": 11,
+    "street_anchor": 7,
+    "address_based_school_site_point": 4,
+    "site_anchor": 3,
+    "verified_school_site_point_not_building_centroid": 1
+  },
+  "canonical_columns": [
+    "service_site_id",
+    "domain_service_site_id",
+    "category",
+    "subcategory",
+    "name",
+    "municipality_code",
+    "municipality_name",
+    "address",
+    "postal_code",
+    "longitude",
+    "latitude",
+    "source_system",
+    "source_dataset",
+    "source_record_id",
+    "reference_period",
+    "coordinate_source",
+    "coordinate_resolution",
+    "confidence",
+    "resolution_status",
+    "usable_for_accessibility",
+    "capacity_value",
+    "capacity_unit",
+    "provenance_json",
+    "geometry"
+  ],
+  "notes": [
+    "Il canonical Service layer contiene solo gli attributi comuni necessari agli algoritmi urbani.",
+    "Gli attributi specifici dei domini Education e Health rimangono nei rispettivi Silver e sono inoltre conservati in provenance_json.",
+    "capacity_value è valorizzato attualmente solo quando esiste una capacità direttamente interpretabile (es. posti letto ospedalieri).",
+    "La presenza nel canonical layer non implica automaticamente utilizzabilità: usare sempre usable_for_accessibility."
+  ]
+}
