@@ -547,7 +547,12 @@ def map_education(
                     ),
 
                 "resolution_status":
-                    (
+                    clean_text(
+                        row.get(
+                            "resolution_status"
+                        )
+                    )
+                    or (
                         "resolved"
                         if usable
                         else "unresolved"
