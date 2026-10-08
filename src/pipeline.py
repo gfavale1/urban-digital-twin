@@ -4,10 +4,14 @@ import argparse
 import shlex
 import subprocess
 import sys
+from datetime import date
+from pathlib import Path
 
+from core.analysis_spec import AnalysisSpec
 from core.config import DEFAULT_CONFIG, PipelineConfig
 from core.municipality import MunicipalityContext
 from core.paths import ROOT
+from core.run_manifest import RunManifest
 
 
 STAGES = (
@@ -36,6 +40,16 @@ def parse_args():
         "--municipality-code",
         required=True,
         help="Codice ISTAT comunale a 6 cifre.",
+    )
+
+    parser.add_argument(
+        "--analysis-date",
+        default=date.today().isoformat(),
+        help=(
+            "Data logica dell'analisi YYYY-MM-DD. "
+            "Default: data odierna. Non modifica i risultati legacy; "
+            "serve per provenance e temporal policy."
+        ),
     )
 
     parser.add_argument(
@@ -472,6 +486,86 @@ def print_context(
         )
 
 
+def build_legacy_analysis_spec(
+    ctx: MunicipalityContext,
+    config: PipelineConfig,
+    analysis_date: str,
+) -> AnalysisSpec:
+    """Describe the current v1 execution without changing its numerics."""
+    return AnalysisSpec.from_legacy_pipeline_config(
+        city_name=ctx.name,
+        municipality_code=ctx.code,
+        analysis_date=analysis_date,
+        config=config,
+    )
+
+
+def initialize_run_metadata(
+    spec: AnalysisSpec,
+) -> tuple[RunManifest, Path, Path, Path]:
+    manifest = RunManifest.create(
+        spec,
+        repo_root=ROOT,
+        routing_backend="networkx_legacy_walking",
+        routing_parameters={
+            "execution_profile": spec.execution_profile,
+            "walking_speed_m_s": spec.walking_speed_m_s,
+        },
+    )
+
+    run_dir = ROOT / "runs" / manifest.run_id
+    spec_path = run_dir / "analysis_spec.json"
+    manifest_path = run_dir / "run_manifest.json"
+
+    spec.write_json(spec_path)
+    manifest.write_json(manifest_path)
+
+    return manifest, run_dir, spec_path, manifest_path
+
+
+def persist_manifest(
+    manifest: RunManifest,
+    manifest_path: Path,
+) -> None:
+    manifest.write_json(manifest_path)
+
+
+def run_stage(
+    *,
+    stage: str,
+    stage_commands: list[list[str]],
+    manifest: RunManifest,
+    manifest_path: Path,
+) -> None:
+    manifest.start_stage(stage)
+    stage_record = manifest.stages[stage]
+    stage_record.metrics["command_count"] = len(stage_commands)
+    stage_record.metrics["commands"] = [
+        shlex.join(command)
+        for command in stage_commands
+    ]
+    persist_manifest(manifest, manifest_path)
+
+    try:
+        for command in stage_commands:
+            run_command(command=command, dry_run=False)
+    except subprocess.CalledProcessError as exc:
+        manifest.fail_stage(
+            stage,
+            f"Subprocess failed with return code {exc.returncode}: "
+            f"{shlex.join(exc.cmd) if isinstance(exc.cmd, list) else exc.cmd}",
+        )
+        persist_manifest(manifest, manifest_path)
+        raise
+    except Exception as exc:
+        manifest.fail_stage(stage, f"{type(exc).__name__}: {exc}")
+        persist_manifest(manifest, manifest_path)
+        raise
+
+    manifest.complete_stage(stage)
+    persist_manifest(manifest, manifest_path)
+
+
 def run_command(
     command: list[str],
     dry_run: bool,
@@ -523,48 +617,97 @@ def main():
         args.to_stage,
     )
 
+    spec = build_legacy_analysis_spec(
+        ctx=ctx,
+        config=config,
+        analysis_date=str(args.analysis_date),
+    )
+
     print_context(
         ctx=ctx,
         config=config,
         stages=stages,
     )
 
-    commands = []
+    print(
+        f"\nAnalysisSpec profile: {spec.execution_profile}"
+    )
+    print(
+        f"AnalysisSpec hash: {spec.spec_hash}"
+    )
+
+    stage_commands = {
+        stage: commands_for_stage(
+            stage=stage,
+            ctx=ctx,
+            config=config,
+        )
+        for stage in stages
+    }
+
+    command_count = sum(
+        len(commands)
+        for commands in stage_commands.values()
+    )
+
+    print(
+        f"\nComandi da eseguire: {command_count}"
+    )
+
+    if args.dry_run:
+        for stage in stages:
+            for command in stage_commands[stage]:
+                run_command(
+                    command=command,
+                    dry_run=True,
+                )
+
+        print(
+            "\n✓ Dry-run completato. "
+            "Nessun comando eseguito e nessun run artifact creato."
+        )
+        return
+
+    (
+        manifest,
+        run_dir,
+        spec_path,
+        manifest_path,
+    ) = initialize_run_metadata(spec)
+
+    print(
+        f"\nRun ID: {manifest.run_id}"
+    )
+    print(
+        f"Run directory: {run_dir}"
+    )
+    print(
+        f"AnalysisSpec: {spec_path}"
+    )
+    print(
+        f"RunManifest: {manifest_path}"
+    )
 
     for stage in stages:
-        commands.extend(
-            commands_for_stage(
-                stage=stage,
-                ctx=ctx,
-                config=config,
-            )
+        run_stage(
+            stage=stage,
+            stage_commands=stage_commands[stage],
+            manifest=manifest,
+            manifest_path=manifest_path,
         )
 
     print(
-        f"\nComandi da eseguire: {len(commands)}"
+        "\n=============================================="
     )
-
-    for command in commands:
-        run_command(
-            command=command,
-            dry_run=args.dry_run,
-        )
-
-    if args.dry_run:
-        print(
-            "\n✓ Dry-run completato. "
-            "Nessun comando eseguito."
-        )
-    else:
-        print(
-            "\n=============================================="
-        )
-        print(
-            " PIPELINE COMPLETATA"
-        )
-        print(
-            "=============================================="
-        )
+    print(
+        " PIPELINE COMPLETATA"
+    )
+    print(
+        "=============================================="
+    )
+    print(
+        f"Run manifest: {manifest_path}"
+    )
 
 
 if __name__ == "__main__":
