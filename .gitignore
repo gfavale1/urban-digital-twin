@@ -26,3 +26,6 @@ data/features/*
 cache/
 .pytest_cache/
 .mypy_cache/
+
+# Generated analysis runs
+runs/
