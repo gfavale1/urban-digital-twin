@@ -107,6 +107,16 @@ SERVICE_V2 = SchemaContract(
             "capacity_unit",
             "source_release_id_or_version",
             "source_checksum",
+            "source_reference_period",
+            "legacy_service_site_id",
+            "legacy_category",
+            "legacy_subcategory",
+            "legacy_usable_for_accessibility",
+            "migration_status",
+            "source_record_ids_json",
+            "source_grade_descriptions_json",
+            "school_ownerships_json",
+            "classification_method",
         }
     ),
 )
