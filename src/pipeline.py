@@ -32,14 +32,26 @@ def parse_args():
         description=(
             "Urban Digital Twin pipeline. "
             "Orchestra la pipeline comunale zero-touch "
-            "a partire dal codice ISTAT."
+            "a partire dal codice ISTAT o dal nome ufficiale del comune."
         )
     )
 
-    parser.add_argument(
+    municipality_group = parser.add_mutually_exclusive_group(required=True)
+    municipality_group.add_argument(
         "--municipality-code",
-        required=True,
-        help="Codice ISTAT comunale a 6 cifre.",
+        help="Codice ISTAT comunale a 6 cifre (compatibilità legacy).",
+    )
+    municipality_group.add_argument(
+        "--city",
+        help="Denominazione comunale ISTAT, es. Parma o Napoli.",
+    )
+    parser.add_argument(
+        "--province-code",
+        help="Disambiguazione --city: codice ISTAT provincia a 3 cifre.",
+    )
+    parser.add_argument(
+        "--region-code",
+        help="Disambiguazione --city: codice ISTAT regione a 2 cifre.",
     )
 
     parser.add_argument(
@@ -115,7 +127,14 @@ def parse_args():
         help="Mostra i comandi senza eseguirli.",
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.city is None and (
+        args.province_code is not None or args.region_code is not None
+    ):
+        parser.error(
+            "--province-code e --region-code sono utilizzabili solo con --city."
+        )
+    return args
 
 
 def script_command(
@@ -607,10 +626,18 @@ def main():
         ),
     )
 
-    ctx = MunicipalityContext.resolve(
-        municipality_code=args.municipality_code,
-        census_year=config.census_year,
-    )
+    if args.city is not None:
+        ctx = MunicipalityContext.resolve_name(
+            city_name=args.city,
+            census_year=config.census_year,
+            province_code=args.province_code,
+            region_code=args.region_code,
+        )
+    else:
+        ctx = MunicipalityContext.resolve(
+            municipality_code=args.municipality_code,
+            census_year=config.census_year,
+        )
 
     stages = selected_stages(
         args.from_stage,
