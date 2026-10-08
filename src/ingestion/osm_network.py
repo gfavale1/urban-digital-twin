@@ -17,6 +17,17 @@ from sqlalchemy import (
     text,
 )
 
+try:
+    from ingestion.drive_speed_model import (
+        assign_free_flow_travel_times,
+    )
+except ModuleNotFoundError:
+    # Supporta anche l'esecuzione diretta:
+    # python src/ingestion/osm_network.py ...
+    from drive_speed_model import (
+        assign_free_flow_travel_times,
+    )
+
 
 # ============================================================
 # PATHS / CONSTANTS
@@ -39,6 +50,7 @@ PROCESSED_OSM_DIR = (
 )
 
 DEFAULT_WALKING_SPEED_M_S = 1.4
+NETWORK_MODES = ("walk", "drive")
 
 
 # ============================================================
@@ -48,7 +60,7 @@ DEFAULT_WALKING_SPEED_M_S = 1.4
 def parse_args():
     parser = argparse.ArgumentParser(
         description=(
-            "Ingestion della rete pedonale OpenStreetMap "
+            "Ingestion della rete OpenStreetMap walk/drive "
             "per un comune già presente nel Digital Twin."
         )
     )
@@ -63,12 +75,33 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--mode",
+        choices=NETWORK_MODES,
+        default="walk",
+        help=(
+            "Modalità di rete OSM. "
+            "Default: walk, per backward compatibility."
+        ),
+    )
+
+    parser.add_argument(
         "--walking-speed",
         type=float,
         default=DEFAULT_WALKING_SPEED_M_S,
         help=(
             "Velocità pedonale media in m/s. "
-            "Default: 1.4."
+            "Usata solo con --mode walk. Default: 1.4."
+        ),
+    )
+
+    parser.add_argument(
+        "--drive-fallback-speed-kph",
+        type=float,
+        default=None,
+        help=(
+            "Fallback drive esplicito in km/h, usato solo se il grafo "
+            "non contiene alcun maxspeed OSM numerico. "
+            "Default: nessun fallback implicito."
         ),
     )
 
@@ -76,7 +109,7 @@ def parse_args():
         "--refresh",
         action="store_true",
         help=(
-            "Ignora lo snapshot GraphML locale "
+            "Ignora lo snapshot GraphML locale della modalità selezionata "
             "e interroga nuovamente OpenStreetMap."
         ),
     )
@@ -98,9 +131,20 @@ def parse_args():
             "esattamente 6 cifre."
         )
 
-    if args.walking_speed <= 0:
+    if (
+        args.mode == "walk"
+        and args.walking_speed <= 0
+    ):
         raise ValueError(
             "walking-speed deve essere > 0."
+        )
+
+    if (
+        args.drive_fallback_speed_kph is not None
+        and args.drive_fallback_speed_kph <= 0
+    ):
+        raise ValueError(
+            "drive-fallback-speed-kph deve essere > 0."
         )
 
     return args
@@ -473,6 +517,9 @@ def configure_osmnx():
         "sidewalk",
         "wheelchair",
         "access",
+        "vehicle",
+        "motor_vehicle",
+        "maxspeed",
     ]
 
     ox.settings.useful_tags_way = list(
@@ -493,9 +540,20 @@ def configure_osmnx():
 # RAW GRAPH SNAPSHOT
 # ============================================================
 
+def _validate_mode(mode):
+    if mode not in NETWORK_MODES:
+        raise ValueError(
+            f"Modalità rete non supportata: {mode!r}. "
+            f"Valori ammessi: {NETWORK_MODES}."
+        )
+
+
 def graphml_path(
     municipality_code,
+    mode="walk",
 ):
+    _validate_mode(mode)
+
     directory = (
         RAW_OSM_DIR
         / municipality_code
@@ -508,7 +566,7 @@ def graphml_path(
 
     return (
         directory
-        / "walk_network.graphml"
+        / f"{mode}_network.graphml"
     )
 
 
@@ -516,18 +574,16 @@ def load_or_download_graph(
     boundary,
     municipality_code,
     refresh=False,
+    mode="walk",
 ):
-    """
-    Usa lo snapshot locale se disponibile.
+    """Carica o scarica uno snapshot OSM separato per modalità."""
 
-    Con --refresh viene invece eseguita
-    una nuova query a OpenStreetMap.
-    """
-
+    _validate_mode(mode)
     configure_osmnx()
 
     snapshot = graphml_path(
-        municipality_code
+        municipality_code,
+        mode=mode,
     )
 
     if (
@@ -547,15 +603,21 @@ def load_or_download_graph(
             snapshot
         )
 
+    label = (
+        "pedonale"
+        if mode == "walk"
+        else "automobilistica"
+    )
+
     print(
-        "\nDownload rete pedonale "
+        f"\nDownload rete {label} "
         "da OpenStreetMap..."
     )
 
     graph = (
         ox.graph.graph_from_polygon(
             boundary,
-            network_type="walk",
+            network_type=mode,
             simplify=True,
             retain_all=True,
             truncate_by_edge=True,
@@ -728,12 +790,21 @@ def validate_graph(
 
 def build_canonical_network(
     graph,
-    walking_speed,
+    walking_speed=DEFAULT_WALKING_SPEED_M_S,
+    mode="walk",
+    drive_fallback_speed_kph=None,
 ):
+    """Converte il MultiDiGraph OSM nel canonical network mode-aware.
+
+    ``walk`` conserva esattamente il contratto legacy con ``walking_time_s``.
+    ``drive`` produce invece velocità tracciabili e
+    ``free_flow_travel_time_s`` senza inventare un walking time.
     """
-    Converte il MultiDiGraph OSM
-    nel nostro canonical model.
-    """
+
+    _validate_mode(mode)
+
+    if mode == "walk" and walking_speed <= 0:
+        raise ValueError("walking_speed deve essere > 0.")
 
     nodes_gdf, edges_gdf = (
         ox.convert.graph_to_gdfs(
@@ -770,13 +841,9 @@ def build_canonical_network(
     node_attributes = []
 
     for _, row in nodes.iterrows():
-
         data = {}
 
-        for column in (
-            node_attribute_columns
-        ):
-
+        for column in node_attribute_columns:
             if column not in nodes.columns:
                 continue
 
@@ -788,14 +855,10 @@ def build_canonical_network(
                 data[column] = value
 
         node_attributes.append(
-            strict_json_dumps(
-                data
-            )
+            strict_json_dumps(data)
         )
 
-    nodes["attributes"] = (
-        node_attributes
-    )
+    nodes["attributes"] = node_attributes
 
     nodes = gpd.GeoDataFrame(
         nodes[
@@ -829,118 +892,90 @@ def build_canonical_network(
         .copy()
     )
 
-    # u:v:key identifica un arco
-    # del MultiDiGraph OSMnx.
-    edges[
-        "source_record_id"
-    ] = (
-        edges["u"]
-        .astype(str)
+    edges["source_record_id"] = (
+        edges["u"].astype(str)
         + ":"
-        + edges["v"]
-        .astype(str)
+        + edges["v"].astype(str)
         + ":"
-        + edges["key"]
-        .astype(str)
+        + edges["key"].astype(str)
     )
 
-    edges[
-        "source_osm_node"
-    ] = (
-        edges["u"]
-        .astype(str)
+    edges["source_osm_node"] = (
+        edges["u"].astype(str)
+    )
+    edges["target_osm_node"] = (
+        edges["v"].astype(str)
     )
 
-    edges[
-        "target_osm_node"
-    ] = (
-        edges["v"]
-        .astype(str)
+    edges["length_m"] = pd.to_numeric(
+        edges["length"],
+        errors="coerce",
     )
 
-    # --------------------------------------------------------
-    # LENGTH
-    # --------------------------------------------------------
-
-    edges["length_m"] = (
-        pd.to_numeric(
-            edges["length"],
-            errors="coerce",
-        )
-    )
-
-    if (
-        edges["length_m"]
-        .isna()
-        .any()
-    ):
+    if edges["length_m"].isna().any():
         raise RuntimeError(
-            "Sono presenti archi "
-            "senza length_m valida."
+            "Sono presenti archi senza length_m valida."
         )
 
-    if (
-        edges["length_m"] <= 0
-    ).any():
+    if (edges["length_m"] <= 0).any():
         raise RuntimeError(
-            "Sono presenti archi "
-            "con length_m <= 0."
+            "Sono presenti archi con length_m <= 0."
         )
-
-    # --------------------------------------------------------
-    # WALKING TIME
-    # --------------------------------------------------------
-
-    edges[
-        "walking_time_s"
-    ] = (
-        edges["length_m"]
-        / walking_speed
-    )
 
     # --------------------------------------------------------
     # ROAD TYPE
     # --------------------------------------------------------
 
     if "highway" in edges.columns:
-
         edges["road_type"] = (
             edges["highway"]
             .apply(to_text)
         )
-
     else:
         edges["road_type"] = None
+
+    # --------------------------------------------------------
+    # MODE-SPECIFIC TRAVEL TIME
+    # --------------------------------------------------------
+
+    drive_speed_summary = None
+
+    if mode == "walk":
+        edges["walking_time_s"] = (
+            edges["length_m"]
+            / walking_speed
+        )
+    else:
+        edges, drive_speed_summary = (
+            assign_free_flow_travel_times(
+                edges,
+                fallback_speed_kph=(
+                    drive_fallback_speed_kph
+                ),
+            )
+        )
 
     # --------------------------------------------------------
     # ONEWAY
     # --------------------------------------------------------
 
     if "oneway" in edges.columns:
-
-        edges[
-            "oneway_normalized"
-        ] = (
+        edges["oneway_normalized"] = (
             edges["oneway"]
             .apply(to_bool)
         )
-
     else:
-        edges[
-            "oneway_normalized"
-        ] = None
+        edges["oneway_normalized"] = None
 
     # --------------------------------------------------------
     # OSM WAY IDS
     # --------------------------------------------------------
 
     if "osmid" in edges.columns:
-
         edges["osm_way_ids"] = (
             edges["osmid"]
             .apply(to_text)
         )
-
     else:
         edges["osm_way_ids"] = None
 
@@ -965,16 +1000,21 @@ def build_canonical_network(
         "ref",
     ]
 
+    if mode == "drive":
+        edge_attribute_columns.extend(
+            [
+                "vehicle",
+                "motor_vehicle",
+                "maxspeed",
+            ]
+        )
+
     edge_attributes = []
 
     for _, row in edges.iterrows():
-
         data = {}
 
-        for column in (
-            edge_attribute_columns
-        ):
-
+        for column in edge_attribute_columns:
             if column not in edges.columns:
                 continue
 
@@ -986,40 +1026,49 @@ def build_canonical_network(
                 data[column] = value
 
         edge_attributes.append(
-            strict_json_dumps(
-                data
-            )
+            strict_json_dumps(data)
         )
 
-    edges["attributes"] = (
-        edge_attributes
-    )
+    edges["attributes"] = edge_attributes
 
     # --------------------------------------------------------
     # FINAL EDGE DATAFRAME
     # --------------------------------------------------------
 
+    common_columns = [
+        "source_record_id",
+        "source_osm_node",
+        "target_osm_node",
+        "geometry",
+        "length_m",
+    ]
+
+    if mode == "walk":
+        mode_columns = [
+            "walking_time_s",
+        ]
+    else:
+        mode_columns = [
+            "speed_kph",
+            "speed_source",
+            "maxspeed_raw",
+            "speed_highway_class",
+            "free_flow_travel_time_s",
+        ]
+
+    final_columns = (
+        common_columns
+        + mode_columns
+        + [
+            "road_type",
+            "oneway_normalized",
+            "osm_way_ids",
+            "attributes",
+        ]
+    )
+
     edges = gpd.GeoDataFrame(
-        edges[
-            [
-                "source_record_id",
-                "source_osm_node",
-                "target_osm_node",
-
-                "geometry",
-
-                "length_m",
-                "walking_time_s",
-
-                "road_type",
-
-                "oneway_normalized",
-
-                "osm_way_ids",
-
-                "attributes",
-            ]
-        ],
+        edges[final_columns],
         geometry="geometry",
         crs=edges_gdf.crs,
     )
@@ -1034,6 +1083,11 @@ def build_canonical_network(
             epsg=4326
         )
 
+    if drive_speed_summary is not None:
+        edges.attrs[
+            "drive_speed_summary"
+        ] = drive_speed_summary.to_dict()
+
     return nodes, edges
 
 
@@ -1044,36 +1098,27 @@ def build_canonical_network(
 def validate_canonical_network(
     nodes,
     edges,
+    mode="walk",
 ):
+    _validate_mode(mode)
+
     print(
         "\n=== CANONICAL DATA QUALITY ==="
     )
 
-    if nodes[
-        "source_record_id"
-    ].duplicated().any():
-
+    if nodes["source_record_id"].duplicated().any():
         raise RuntimeError(
-            "source_record_id duplicati "
-            "nei network nodes."
+            "source_record_id duplicati nei network nodes."
         )
 
-    print(
-        "✓ node source_record_id univoci"
-    )
+    print("✓ node source_record_id univoci")
 
-    if edges[
-        "source_record_id"
-    ].duplicated().any():
-
+    if edges["source_record_id"].duplicated().any():
         raise RuntimeError(
-            "source_record_id duplicati "
-            "nei network edges."
+            "source_record_id duplicati nei network edges."
         )
 
-    print(
-        "✓ edge source_record_id univoci"
-    )
+    print("✓ edge source_record_id univoci")
 
     if nodes.geometry.isna().any():
         raise RuntimeError(
@@ -1085,53 +1130,97 @@ def validate_canonical_network(
             "Archi con geometria mancante."
         )
 
-    print(
-        "✓ geometrie presenti"
-    )
+    print("✓ geometrie presenti")
 
-    if (
-        edges["length_m"]
-        .isna()
-        .any()
-    ):
+    if edges["length_m"].isna().any():
         raise RuntimeError(
             "length_m contiene NULL."
         )
 
-    if (
-        edges["walking_time_s"]
-        .isna()
-        .any()
-    ):
-        raise RuntimeError(
-            "walking_time_s contiene NULL."
+    if mode == "walk":
+        if "walking_time_s" not in edges.columns:
+            raise RuntimeError(
+                "walking_time_s assente nel network walk."
+            )
+        if edges["walking_time_s"].isna().any():
+            raise RuntimeError(
+                "walking_time_s contiene NULL."
+            )
+        print("✓ lunghezza e walking time validi")
+    else:
+        required_drive = {
+            "speed_kph",
+            "speed_source",
+            "free_flow_travel_time_s",
+        }
+        missing = required_drive - set(edges.columns)
+        if missing:
+            raise RuntimeError(
+                "Colonne drive mancanti: "
+                + ", ".join(sorted(missing))
+            )
+
+        speed = pd.to_numeric(
+            edges["speed_kph"],
+            errors="coerce",
+        )
+        travel = pd.to_numeric(
+            edges["free_flow_travel_time_s"],
+            errors="coerce",
         )
 
-    print(
-        "✓ lunghezza e walking time validi"
-    )
+        if (
+            speed.isna().any()
+            or not speed.map(math.isfinite).all()
+            or (speed <= 0).any()
+        ):
+            raise RuntimeError(
+                "speed_kph contiene valori null/non finiti/non positivi."
+            )
 
-    # Controllo esplicito JSON.
+        if (
+            travel.isna().any()
+            or not travel.map(math.isfinite).all()
+            or (travel <= 0).any()
+        ):
+            raise RuntimeError(
+                "free_flow_travel_time_s contiene valori non validi."
+            )
+
+        if edges["speed_source"].isna().any():
+            raise RuntimeError(
+                "speed_source contiene NULL."
+            )
+
+        print(
+            "✓ lunghezza, speed_kph e "
+            "free_flow_travel_time_s validi"
+        )
+
+        print("Speed source:")
+        print(
+            edges["speed_source"]
+            .value_counts(dropna=False)
+            .to_string()
+        )
+
     for value in nodes["attributes"]:
         json.loads(value)
 
     for value in edges["attributes"]:
         json.loads(value)
 
-    print(
-        "✓ JSON attributes validi"
-    )
+    print("✓ JSON attributes validi")
 
-
-# ============================================================
-# SILVER LAYER
-# ============================================================
 
 def save_silver_datasets(
     nodes,
     edges,
     municipality_code,
+    mode="walk",
 ):
+    _validate_mode(mode)
+
     directory = (
         PROCESSED_OSM_DIR
         / municipality_code
@@ -1144,12 +1233,12 @@ def save_silver_datasets(
 
     nodes_path = (
         directory
-        / "walk_nodes.parquet"
+        / f"{mode}_nodes.parquet"
     )
 
     edges_path = (
         directory
-        / "walk_edges.parquet"
+        / f"{mode}_edges.parquet"
     )
 
     nodes.to_parquet(
@@ -1165,14 +1254,10 @@ def save_silver_datasets(
     print(
         "\n=== SILVER DATASETS ==="
     )
+    print(f"✓ {nodes_path}")
+    print(f"✓ {edges_path}")
 
-    print(
-        f"✓ {nodes_path}"
-    )
-
-    print(
-        f"✓ {edges_path}"
-    )
+    return nodes_path, edges_path
 
 
 # ============================================================
@@ -1510,15 +1595,22 @@ def write_to_postgis(
     engine,
     nodes,
     edges,
+    mode="walk",
 ):
     """
     Tutto il caricamento avviene
     in un'unica transazione.
 
-    Se un errore avviene sugli edge,
-    anche l'inserimento dei nodi
-    viene rollbackato.
+    Il modello PostGIS legacy è walking-specific.
+    Il drive resta intenzionalmente su GraphML/GeoParquet
+    finché non verrà definita una migrazione mode-aware.
     """
+
+    _validate_mode(mode)
+    if mode != "walk":
+        raise ValueError(
+            "Il PostGIS legacy supporta solo mode='walk'."
+        )
 
     with engine.begin() as connection:
 
@@ -1581,168 +1673,122 @@ def write_to_postgis(
 def main():
     args = parse_args()
 
-    print(
-        "\n===================================="
+    mode_label = (
+        "PEDESTRIAN"
+        if args.mode == "walk"
+        else "DRIVE FREE-FLOW"
     )
 
-    print(
-        " OSM PEDESTRIAN NETWORK INGESTION"
-    )
-
-    print(
-        "===================================="
-    )
+    print("\n====================================")
+    print(f" OSM {mode_label} NETWORK INGESTION")
+    print("====================================")
 
     engine = get_database_engine()
 
-    # ========================================================
-    # MUNICIPALITY
-    # ========================================================
-
-    metadata, boundary = (
-        load_municipality(
-            engine,
-            args.municipality_code,
-        )
+    metadata, boundary = load_municipality(
+        engine,
+        args.municipality_code,
     )
 
-    print(
-        "\n=== COMUNE ==="
-    )
-
-    print(
-        f"Nome: "
-        f"{metadata['name']}"
-    )
-
+    print("\n=== COMUNE ===")
+    print(f"Nome: {metadata['name']}")
     print(
         "Codice ISTAT: "
         f"{metadata['istat_code']}"
     )
+    print(f"Mode: {args.mode}")
 
-    # ========================================================
-    # OSM GRAPH
-    # ========================================================
+    graph = load_or_download_graph(
+        boundary=boundary,
+        municipality_code=(
+            args.municipality_code
+        ),
+        refresh=args.refresh,
+        mode=args.mode,
+    )
 
-    graph = (
-        load_or_download_graph(
-            boundary=boundary,
+    validate_graph(graph)
 
-            municipality_code=(
-                args.municipality_code
-            ),
+    nodes, edges = build_canonical_network(
+        graph,
+        walking_speed=args.walking_speed,
+        mode=args.mode,
+        drive_fallback_speed_kph=(
+            args.drive_fallback_speed_kph
+        ),
+    )
 
-            refresh=args.refresh,
+    print("\n=== CANONICAL NETWORK ===")
+    print(f"Nodi: {len(nodes)}")
+    print(f"Archi: {len(edges)}")
+
+    if args.mode == "walk":
+        print(
+            "Velocità pedonale: "
+            f"{args.walking_speed} m/s"
         )
-    )
-
-    # ========================================================
-    # RAW GRAPH QUALITY
-    # ========================================================
-
-    validate_graph(
-        graph
-    )
-
-    # ========================================================
-    # CANONICAL MODEL
-    # ========================================================
-
-    nodes, edges = (
-        build_canonical_network(
-            graph,
-            args.walking_speed,
+    else:
+        summary = edges.attrs.get(
+            "drive_speed_summary",
+            {},
         )
-    )
-
-    print(
-        "\n=== CANONICAL NETWORK ==="
-    )
-
-    print(
-        f"Nodi: "
-        f"{len(nodes)}"
-    )
-
-    print(
-        f"Archi: "
-        f"{len(edges)}"
-    )
-
-    print(
-        "Velocità pedonale: "
-        f"{args.walking_speed} m/s"
-    )
-
-    # ========================================================
-    # CANONICAL QUALITY
-    # ========================================================
+        if summary:
+            print(
+                "Drive speed [km/h] "
+                f"min/median/max: "
+                f"{summary['min_speed_kph']:.2f} / "
+                f"{summary['median_speed_kph']:.2f} / "
+                f"{summary['max_speed_kph']:.2f}"
+            )
 
     validate_canonical_network(
         nodes,
         edges,
+        mode=args.mode,
     )
-
-    # ========================================================
-    # SILVER
-    # ========================================================
 
     save_silver_datasets(
         nodes,
         edges,
         args.municipality_code,
+        mode=args.mode,
     )
 
-    # ========================================================
-    # POSTGIS
-    # ========================================================
+    if args.mode == "walk":
+        write_to_postgis(
+            engine,
+            nodes,
+            edges,
+            mode="walk",
+        )
+    else:
+        print(
+            "\nPOSTGIS: skip intenzionale per drive; "
+            "il modello DB legacy è walking-specific."
+        )
 
-    write_to_postgis(
-        engine,
-        nodes,
-        edges,
-    )
-
-    # ========================================================
-    # SUMMARY
-    # ========================================================
-
-    print(
-        "\n===================================="
-    )
-
-    print(
-        " INGESTION OSM COMPLETATA"
-    )
-
-    print(
-        "===================================="
-    )
-
-    print(
-        f"Comune: "
-        f"{metadata['name']}"
-    )
-
+    print("\n====================================")
+    print(" INGESTION OSM COMPLETATA")
+    print("====================================")
+    print(f"Comune: {metadata['name']}")
     print(
         "Codice ISTAT: "
         f"{metadata['istat_code']}"
     )
+    print(f"Mode: {args.mode}")
+    print(f"Nodi: {len(nodes)}")
+    print(f"Archi: {len(edges)}")
 
-    print(
-        f"Nodi: "
-        f"{len(nodes)}"
-    )
-
-    print(
-        f"Archi: "
-        f"{len(edges)}"
-    )
-
-    print(
-        "Walking speed: "
-        f"{args.walking_speed} m/s"
-    )
+    if args.mode == "walk":
+        print(
+            "Walking speed: "
+            f"{args.walking_speed} m/s"
+        )
+    else:
+        print(
+            "Travel-time semantics: "
+            "free-flow potential accessibility"
+        )
 
 
 if __name__ == "__main__":

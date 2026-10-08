@@ -8,6 +8,8 @@ import networkx as nx
 import numpy as np
 import pandas as pd
 
+from analysis.networkx_routing import NetworkXRoutingBackend
+from analysis.routing_engine import RoutingBackend
 from core.analysis_spec import PopulationSelector, ServiceType, TransportMode
 from core.schema_v2 import (
     ACCESSIBILITY_ORIGIN_V2,
@@ -223,6 +225,8 @@ def compute_accessibility(
     origins: pd.DataFrame,
     services: pd.DataFrame,
     request: AccessibilityEngineRequest,
+    *,
+    routing_backend: RoutingBackend | None = None,
 ) -> AccessibilityEngineResult:
     """Compute location-based accessibility for one service type and one mode.
 
@@ -255,10 +259,7 @@ def compute_accessibility(
     ].copy()
     routable_service_count = int(len(routable_services))
 
-    if graph.is_directed():
-        routing_graph = graph.reverse(copy=False)
-    else:
-        routing_graph = graph
+    backend = routing_backend or NetworkXRoutingBackend(graph)
 
     origins_by_node = _origin_indices_by_node(prepared_origins)
     origin_snap_m = prepared_origins["origin_snap_distance_m"].to_numpy(dtype=float)
@@ -269,20 +270,13 @@ def compute_accessibility(
         service_snap_s = service_snap_m / request.off_network_speed_m_s
         service_id = str(service["service_id"])
 
-        time_lengths = nx.single_source_dijkstra_path_length(
-            routing_graph,
-            source=service_node,
-            weight=request.travel_time_weight,
+        routing_costs = backend.costs_to_target(
+            service_node,
+            travel_time_weight=request.travel_time_weight,
+            distance_weight=request.distance_weight,
         )
-
-        if request.distance_weight is not None:
-            distance_lengths = nx.single_source_dijkstra_path_length(
-                routing_graph,
-                source=service_node,
-                weight=request.distance_weight,
-            )
-        else:
-            distance_lengths = {}
+        time_lengths = routing_costs.travel_time_s_by_node
+        distance_lengths = routing_costs.distance_m_by_node or {}
 
         for origin_node, row_indices in origins_by_node.items():
             if origin_node not in time_lengths:
