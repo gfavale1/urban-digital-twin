@@ -10,7 +10,11 @@ from shapely.geometry import Polygon, MultiPolygon
 from shapely.ops import unary_union
 from sqlalchemy import create_engine, text
 
-from download_istat_boundaries import ensure_region_boundaries
+try:
+    from .download_istat_boundaries import ensure_region_boundaries
+except ImportError:
+    # Compatibility with direct execution: python src/ingestion/istat.py
+    from download_istat_boundaries import ensure_region_boundaries
 
 
 # ============================================================
@@ -55,6 +59,13 @@ CENSUS_REFERENCE_DATE = date(
 # ============================================================
 # ISTAT VARIABLE MAPPING
 # ============================================================
+
+FINE_AGE_BAND_SOURCE_COLUMNS = {
+    "age_lt_5": "P14",
+    "age_5_9": "P15",
+    "age_10_14": "P16",
+    "age_15_19": "P17",
+}
 
 AGE_0_14 = [
     "P14",
@@ -344,70 +355,17 @@ def filter_municipality(
             f"PRO_COM cercato: {procom}"
         )
 
-    municipality_names = (
-        census_municipality["COMUNE"]
-        .dropna()
-        .astype(str)
-        .str.strip()
+    municipality_name = str(
+        census_municipality[
+            "COMUNE"
+        ].iloc[0]
     )
-    municipality_names = municipality_names[
-        municipality_names.ne("")
-    ]
 
-    province_names = (
-        census_municipality["PROVINCIA"]
-        .dropna()
-        .astype(str)
-        .str.strip()
+    province_name = str(
+        census_municipality[
+            "PROVINCIA"
+        ].iloc[0]
     )
-    province_names = province_names[
-        province_names.ne("")
-    ]
-
-    if not municipality_names.empty:
-        municipality_name = municipality_names.iloc[0]
-    else:
-        dimension_path = (
-            PROCESSED_DIR
-            / "municipality_dimension_2023.parquet"
-        )
-
-        if not dimension_path.exists():
-            raise RuntimeError(
-                "Nome comunale assente nel censimento e "
-                "dimensione amministrativa nazionale non disponibile."
-            )
-
-        dimension = pd.read_parquet(
-            dimension_path
-        )
-
-        dimension["istat_code"] = (
-            dimension["istat_code"]
-            .astype(str)
-            .str.strip()
-            .str.zfill(6)
-        )
-
-        dimension_row = dimension.loc[
-            dimension["istat_code"]
-            == municipality_code
-        ]
-
-        if len(dimension_row) != 1:
-            raise RuntimeError(
-                "Impossibile risolvere univocamente il nome "
-                f"del comune {municipality_code}."
-            )
-
-        municipality_name = str(
-            dimension_row.iloc[0]["name"]
-        ).strip()
-
-    if not province_names.empty:
-        province_name = province_names.iloc[0]
-    else:
-        province_name = None
 
     province_code = str(
         int(
@@ -512,6 +470,16 @@ def build_demographic_features(
     census,
 ):
     census = census.copy()
+
+    # Preserve the five-year bands required by the v2 school-target
+    # population proxies. These are not exact school-age cohorts.
+    for output_column, source_column in (
+        FINE_AGE_BAND_SOURCE_COLUMNS.items()
+    ):
+        census[output_column] = pd.to_numeric(
+            census[source_column],
+            errors="coerce",
+        )
 
     census["age_0_14"] = (
         census[
@@ -626,6 +594,28 @@ def validate_data(
     # --------------------------------------------------------
     # AGE CONSISTENCY
     # --------------------------------------------------------
+
+    fine_0_14_sum = (
+        census["age_lt_5"]
+        + census["age_5_9"]
+        + census["age_10_14"]
+    )
+
+    fine_0_14_mismatch = (
+        fine_0_14_sum
+        != census["age_0_14"]
+    ).sum()
+
+    if fine_0_14_mismatch:
+        raise RuntimeError(
+            "Incoerenza nelle fasce quinquennali 0-14 anni."
+        )
+
+    for column in FINE_AGE_BAND_SOURCE_COLUMNS:
+        if (census[column] < 0).any():
+            raise RuntimeError(
+                f"Trovato valore negativo nella fascia {column}."
+            )
 
     age_sum = (
         census["age_0_14"]
@@ -814,6 +804,13 @@ def build_observation_dataset(
 
             "PF1",
 
+            # Five-year bands preserved for v2 target-population proxies.
+            "age_lt_5",
+            "age_5_9",
+            "age_10_14",
+            "age_15_19",
+
+            # Legacy/coarser bands kept for backward compatibility.
             "age_0_14",
             "age_15_64",
             "age_65_plus",
