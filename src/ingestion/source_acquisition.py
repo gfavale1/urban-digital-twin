@@ -1,12 +1,7 @@
-"""B5B1: deterministic source preflight and Bronze provenance manifest.
+"""B5B2: deterministic Bronze preflight + opt-in verified official acquisition.
 
-This module deliberately does *not* invent URLs or auto-refresh historical files.
-Only existing, validated downloaders for ISTAT 2021 boundaries and MIM 202425
-school registries are called, and only with --fetch-supported.
-
-ISTAT census workbooks, MIM building registry, and Ministry of Health raw CSVs
-are inventoried from their exact existing Bronze directories. Dedicated
-verified download adapters will be introduced in B5B2.
+Cached files are never refreshed or overwritten, and all newly acquired sources
+are validated and recorded in the provenance manifest.
 """
 from __future__ import annotations
 
@@ -20,7 +15,7 @@ from typing import Any
 
 from core.municipality import MunicipalityContext
 from core.paths import ROOT
-from ingestion import download_istat_boundaries, mim
+from ingestion import download_istat_boundaries, mim, official_downloads
 
 
 RAW_ISTAT = ROOT / "data" / "raw" / "istat"
@@ -61,6 +56,7 @@ class AcquisitionReport:
     fetch_supported: bool
     generated_at_utc: str
     sources: tuple[SourceRecord, ...]
+    allow_contemporary_pharmacy_source: bool = False
 
     @property
     def ready(self) -> bool:
@@ -72,9 +68,9 @@ class AcquisitionReport:
             "ready": self.ready,
             "sources": [asdict(source) for source in self.sources],
             "notes": [
-                "B5B1 checks file presence, uniqueness and checksums; it does not prove schema or historical source revision.",
-                "Cached raw files are not assumed to be up-to-date: their exact bytes are tracked using SHA-256.",
-                "Only ISTAT boundaries and supported MIM school registries have download adapters in B5B1.",
+                "B5B2 checks file presence, uniqueness, checksums, and newly downloaded file structure; it does not prove historical source completeness.",
+                "Cached raw files are never refreshed and are not assumed up-to-date: their exact bytes are tracked using SHA-256.",
+                "Official download URLs are pinned for 2023/202425 except the dated pharmacy feed discovered from its Ministry catalogue.",
                 "A pharmacy analysis date is a temporal filter on the available registry, not the publication date of that registry.",
             ],
         }
@@ -142,7 +138,12 @@ def _unique_cached(
     return _record(source_id, "cached", snapshot, paths=(path,), official_catalogue=official_catalogue)
 
 
-def inspect_istat_census(region_code: str, census_year: str) -> SourceRecord:
+def inspect_istat_census(
+    region_code: str,
+    census_year: str,
+    *,
+    fetch_supported: bool = False,
+) -> SourceRecord:
     year = str(census_year).strip()
     if year != "2023":
         return _record(
@@ -150,11 +151,30 @@ def inspect_istat_census(region_code: str, census_year: str) -> SourceRecord:
             note="Current istat.py and census source paths are fixed to the 2023 census; no silent substitution.",
         )
     directory = RAW_ISTAT / f"censimento_{year}" / f"Dati_regionali_{year}"
-    return _unique_cached(
+    catalogue = "https://www.istat.it/notizia/dati-per-sezioni-di-censimento/"
+    record = _unique_cached(
         "istat_census_sections", directory,
         f"R{region_code}_*_{year}_sezioni.xlsx", year,
-        official_catalogue="https://www.istat.it/notizia/dati-per-sezioni-di-censimento/",
+        official_catalogue=catalogue,
     )
+    if record.state != "missing" or not fetch_supported:
+        return record
+    try:
+        acquired = official_downloads.download_istat_region(
+            region_code, year, directory,
+            RAW_ISTAT / "downloads",
+        )
+        return _record(
+            "istat_census_sections", "downloaded", year,
+            paths=(acquired.path,), source_url=acquired.source_url,
+            official_catalogue=catalogue, note=acquired.note,
+        )
+    except Exception as exc:
+        return _record(
+            "istat_census_sections", "acquisition_failed", year,
+            official_catalogue=catalogue,
+            note=f"{type(exc).__name__}: {exc}",
+        )
 
 
 def inspect_istat_boundaries(region_code: str, *, fetch_supported: bool) -> SourceRecord:
@@ -235,12 +255,36 @@ def inspect_mim_registry(
         )
 
 
-def inspect_mim_buildings(building_year: str) -> SourceRecord:
+def inspect_mim_buildings(
+    building_year: str,
+    *,
+    fetch_supported: bool = False,
+) -> SourceRecord:
     directory = RAW_MIM / "buildings" / str(building_year)
     record = _unique_cached(
         "mim_buildings", directory, "*.csv", str(building_year),
         official_catalogue="https://dati.istruzione.it/opendata/opendata/catalog/EDIANAGRAFESTA2021",
     )
+    if record.state == "missing" and fetch_supported:
+        if str(building_year) != "202425":
+            return _record(
+                "mim_buildings", "unsupported_snapshot", str(building_year),
+                note="Only the official MIM 2024/25 building distribution is pinned.",
+            )
+        try:
+            acquired = official_downloads.download_mim_buildings(building_year, directory)
+            return _record(
+                "mim_buildings", "downloaded", str(building_year),
+                paths=(acquired.path,), source_url=acquired.source_url,
+                official_catalogue=official_downloads.MIM_202425_BUILDINGS_URL,
+                note=acquired.note,
+            )
+        except Exception as exc:
+            return _record(
+                "mim_buildings", "acquisition_failed", str(building_year),
+                official_catalogue=official_downloads.MIM_202425_BUILDINGS_URL,
+                note=f"{type(exc).__name__}: {exc}",
+            )
     if record.state != "cached":
         return record
     filename = Path(record.paths[0]).name.upper()
@@ -253,7 +297,13 @@ def inspect_mim_buildings(building_year: str) -> SourceRecord:
     return record
 
 
-def inspect_health(pharmacy_reference_date: str, hospital_year: str) -> tuple[SourceRecord, SourceRecord]:
+def inspect_health(
+    pharmacy_reference_date: str,
+    hospital_year: str,
+    *,
+    fetch_supported: bool = False,
+    allow_contemporary_pharmacy_source: bool = False,
+) -> tuple[SourceRecord, SourceRecord]:
     pharmacies = _unique_cached(
         "salute_pharmacies",
         RAW_SALUTE / "farmacie", "*.csv", str(pharmacy_reference_date),
@@ -269,6 +319,58 @@ def inspect_health(pharmacy_reference_date: str, hospital_year: str) -> tuple[So
             if str(hospital_year) == "2023" else None
         ),
     )
+    if fetch_supported and pharmacies.state == "missing":
+        try:
+            acquired = official_downloads.download_salute_pharmacies(
+                pharmacy_reference_date,
+                RAW_SALUTE / "farmacie",
+                allow_contemporary_source=allow_contemporary_pharmacy_source,
+            )
+            pharmacies = _record(
+                "salute_pharmacies", "downloaded", str(pharmacy_reference_date),
+                paths=(acquired.path,), source_url=acquired.source_url,
+                official_catalogue=official_downloads.SALUTE_PHARMACIES_CATALOGUE,
+                note=acquired.note,
+            )
+        except PermissionError as exc:
+            pharmacies = _record(
+                "salute_pharmacies", "unsupported_snapshot", str(pharmacy_reference_date),
+                official_catalogue=official_downloads.SALUTE_PHARMACIES_CATALOGUE,
+                note=str(exc),
+            )
+        except Exception as exc:
+            pharmacies = _record(
+                "salute_pharmacies", "acquisition_failed", str(pharmacy_reference_date),
+                official_catalogue=official_downloads.SALUTE_PHARMACIES_CATALOGUE,
+                note=f"{type(exc).__name__}: {exc}",
+            )
+
+    if fetch_supported and hospitals.state == "missing":
+        if str(hospital_year) != "2023":
+            hospitals = _record(
+                "salute_hospital_establishments", "unsupported_snapshot", str(hospital_year),
+                note="Only the official 2023 hospital file is pinned.",
+            )
+        else:
+            try:
+                acquired = official_downloads.download_salute_hospitals(
+                    hospital_year,
+                    RAW_SALUTE / f"strutture_ospedaliere_{hospital_year}",
+                )
+                hospitals = _record(
+                    "salute_hospital_establishments", "downloaded", str(hospital_year),
+                    paths=(acquired.path,), source_url=acquired.source_url,
+                    official_catalogue=(
+                        "https://www.dati.salute.gov.it/it/dataset/"
+                        "posti-letto-stabilimento-ospedaliero-e-disciplina-2023/"
+                    ),
+                    note=acquired.note,
+                )
+            except Exception as exc:
+                hospitals = _record(
+                    "salute_hospital_establishments", "acquisition_failed", str(hospital_year),
+                    note=f"{type(exc).__name__}: {exc}",
+                )
     return pharmacies, hospitals
 
 
@@ -281,14 +383,19 @@ def inspect_sources(
     pharmacy_reference_date: str,
     hospital_year: str,
     fetch_supported: bool = False,
+    allow_contemporary_pharmacy_source: bool = False,
 ) -> AcquisitionReport:
     records = (
-        inspect_istat_census(ctx.region_code, census_year),
+        inspect_istat_census(ctx.region_code, census_year, fetch_supported=fetch_supported),
         inspect_istat_boundaries(ctx.region_code, fetch_supported=fetch_supported),
         inspect_mim_registry("SCUANAGRAFESTAT", school_year, fetch_supported=fetch_supported),
         inspect_mim_registry("SCUANAGRAFEPAR", school_year, fetch_supported=fetch_supported),
-        inspect_mim_buildings(building_year),
-        *inspect_health(pharmacy_reference_date, hospital_year),
+        inspect_mim_buildings(building_year, fetch_supported=fetch_supported),
+        *inspect_health(
+            pharmacy_reference_date, hospital_year,
+            fetch_supported=fetch_supported,
+            allow_contemporary_pharmacy_source=allow_contemporary_pharmacy_source,
+        ),
     )
     return AcquisitionReport(
         municipality_code=ctx.code,
@@ -301,6 +408,7 @@ def inspect_sources(
         fetch_supported=fetch_supported,
         generated_at_utc=datetime.now(timezone.utc).isoformat(),
         sources=records,
+        allow_contemporary_pharmacy_source=allow_contemporary_pharmacy_source,
     )
 
 
@@ -316,7 +424,7 @@ def write_report(report: AcquisitionReport, output_path: Path) -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="B5B1 Bronze source preflight (read-only by default)."
+        description="B5B2 Bronze source preflight + verified opt-in downloads (read-only by default)."
     )
     location = parser.add_mutually_exclusive_group(required=True)
     location.add_argument("--city", help="Exact ISTAT municipality name.")
@@ -330,7 +438,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--hospital-year", default="2023")
     parser.add_argument(
         "--fetch-supported", action="store_true",
-        help="Allow existing official downloaders for ISTAT boundaries + supported MIM registries only.",
+        help="Acquire missing Bronze files from pinned verified official distributions; never refresh existing sources.",
+    )
+    parser.add_argument(
+        "--allow-contemporary-pharmacy-source", action="store_true",
+        help=("Explicitly permit downloading a present-day pharmacy catalogue file "
+              "for an older analysis reference date; historical completeness is not guaranteed."),
     )
     parser.add_argument(
         "--strict", action="store_true",
@@ -342,6 +455,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.allow_contemporary_pharmacy_source and not args.fetch_supported:
+        raise ValueError("--allow-contemporary-pharmacy-source requires --fetch-supported.")
     if args.city is not None:
         ctx = MunicipalityContext.resolve_name(
             args.city, census_year=args.census_year,
@@ -361,6 +476,7 @@ def main(argv: list[str] | None = None) -> int:
         pharmacy_reference_date=args.health_reference_date,
         hospital_year=args.hospital_year,
         fetch_supported=args.fetch_supported,
+        allow_contemporary_pharmacy_source=args.allow_contemporary_pharmacy_source,
     )
 
     label = args.health_reference_date.replace("-", "")
@@ -372,7 +488,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     write_report(report, path)
 
-    print("\n=== B5B1 SOURCE PREFLIGHT ===")
+    print("\n=== B5B2 SOURCE PREFLIGHT ===")
     print(f"Comune: {ctx.name} ({ctx.code})")
     print(f"Fetch supported: {args.fetch_supported}")
     for source in report.sources:
