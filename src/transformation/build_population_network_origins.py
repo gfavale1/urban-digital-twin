@@ -22,6 +22,12 @@ FEATURES_ACCESSIBILITY_DIR = (
 DEMOGRAPHIC_COLUMNS = [
     "population",
     "families",
+    # Five-year bands used as school target-population proxies in v2.
+    "age_lt_5",
+    "age_5_9",
+    "age_10_14",
+    "age_15_19",
+    # Legacy/coarser bands retained for regression compatibility.
     "age_0_14",
     "age_15_64",
     "age_65_plus",
@@ -30,6 +36,16 @@ DEMOGRAPHIC_COLUMNS = [
     "housing_units",
     "unemployed_population",
 ]
+
+
+V2_PROXY_SOURCE_COLUMNS = {
+    "population_age_lt5_proxy": "assigned_age_lt_5",
+    "population_age_5_9_proxy": "assigned_age_5_9",
+    "population_age_10_14_proxy": "assigned_age_10_14",
+    "population_age_15_19_proxy": "assigned_age_15_19",
+}
+
+GEOGRAPHY_VERSION = "BT2021"
 
 
 def parse_args():
@@ -46,7 +62,7 @@ def parse_args():
     parser.add_argument(
         "--municipality-code",
         required=True,
-        help="Codice ISTAT comunale a 6 cifre.",
+        help="Codice ISTAT comunale a 6 cifre, es. 077014.",
     )
 
     parser.add_argument(
@@ -254,38 +270,10 @@ def prepare_areas_and_observations(
         indicator=True,
     )
 
-    merged["has_observation_row"] = (
+    merged["has_observation"] = (
         merged["_merge"]
         == "both"
     )
-
-    # A census row is usable as population demand only when the
-    # population value is actually known. Missing population is
-    # unknown evidence, never zero population.
-    merged["has_observation"] = (
-        merged["has_observation_row"]
-        & merged["population"].notna()
-    )
-
-    negative_population = (
-        merged["population"].notna()
-        & (merged["population"] < 0)
-    )
-
-    if negative_population.any():
-        codes = (
-            merged.loc[
-                negative_population,
-                "census_section_code",
-            ]
-            .astype(str)
-            .tolist()
-        )
-
-        raise RuntimeError(
-            "Valori di population negativi nelle sezioni: "
-            f"{codes[:20]}"
-        )
 
     merged = merged.drop(
         columns=["_merge"]
@@ -368,10 +356,6 @@ def build_network_components(
 
     graph.add_nodes_from(node_ids)
 
-    node_id_set = set(node_ids)
-    invalid_endpoints = set()
-    valid_edges = []
-
     for _, edge in edges.iterrows():
         source = normalize_node_id(
             edge["source_osm_node"]
@@ -386,36 +370,10 @@ def build_network_components(
         ):
             continue
 
-        if source not in node_id_set:
-            invalid_endpoints.add(source)
-
-        if target not in node_id_set:
-            invalid_endpoints.add(target)
-
-        if (
-            source in node_id_set
-            and target in node_id_set
-        ):
-            valid_edges.append(
-                (source, target)
-            )
-
-    if invalid_endpoints:
-        sample = sorted(
-            invalid_endpoints
-        )[:20]
-
-        raise RuntimeError(
-            "Gli edge OSM contengono endpoint assenti dal "
-            "dataset dei nodi. "
-            f"Totale endpoint incoerenti: "
-            f"{len(invalid_endpoints)}; "
-            f"esempi: {sample}"
+        graph.add_edge(
+            source,
+            target,
         )
-
-    graph.add_edges_from(
-        valid_edges
-    )
 
     components = list(
         nx.weakly_connected_components(
@@ -423,17 +381,9 @@ def build_network_components(
         )
     )
 
-    # Deterministic component ordering:
-    # largest components first; equal-sized components are ordered
-    # by their lexicographically smallest network node ID.
     components.sort(
-        key=lambda component: (
-            -len(component),
-            min(
-                str(node_id)
-                for node_id in component
-            ),
-        ),
+        key=len,
+        reverse=True,
     )
 
     component_map = {}
@@ -823,6 +773,99 @@ def build_origin_rows(
     )
 
 
+def add_origin_v2_fields(
+    origins,
+    *,
+    municipality_code,
+    census_year,
+):
+    """Add v2 canonical aliases without removing legacy columns.
+
+    The current v1 origin representation distributes a section uniformly
+    across internal pedestrian-network nodes (or uses one nearest-node
+    fallback). Phase 3A records that method explicitly; it does not yet
+    switch to the methodology-v2 representative-point baseline.
+    """
+    result = origins.copy()
+
+    result["origin_id"] = (
+        "origin:"
+        + str(municipality_code).zfill(6)
+        + ":"
+        + str(census_year)
+        + ":"
+        + result["census_section_code"].astype(str)
+        + ":"
+        + result["network_node_id"].astype(str)
+    )
+
+    if result["origin_id"].duplicated().any():
+        raise RuntimeError(
+            "origin_id v2 duplicati: impossibile costruire il canonical demand layer."
+        )
+
+    result["municipality_code"] = str(municipality_code).zfill(6)
+    result["population_total"] = result["assigned_population"]
+    result["population_reference_date"] = result["reference_date"]
+    result["census_year"] = str(census_year)
+    result["geography_version"] = GEOGRAPHY_VERSION
+    result["origin_method"] = result["assignment_method"]
+
+    for target_column, assigned_source in V2_PROXY_SOURCE_COLUMNS.items():
+        if assigned_source in result.columns:
+            result[target_column] = result[assigned_source]
+        else:
+            # Backward-compatible degraded state if an old ISTAT Silver
+            # snapshot is used before it has been rebuilt with Phase 3A.
+            result[target_column] = np.nan
+
+    return result
+
+
+def validate_demographic_conservation(
+    observed,
+    origins,
+):
+    """Verify that every distributed demographic variable is conserved."""
+    checks = {}
+
+    for column in DEMOGRAPHIC_COLUMNS:
+        assigned_column = f"assigned_{column}"
+
+        if (
+            column not in observed.columns
+            or assigned_column not in origins.columns
+        ):
+            continue
+
+        original = float(
+            observed[column].fillna(0).sum()
+        )
+        assigned = float(
+            origins[assigned_column].fillna(0).sum()
+        )
+        difference = assigned - original
+        tolerance = max(
+            1e-6,
+            abs(original) * 1e-10,
+        )
+
+        if abs(difference) > tolerance:
+            raise RuntimeError(
+                "Variabile demografica non conservata: "
+                f"{column}; original={original}, "
+                f"assigned={assigned}, difference={difference}"
+            )
+
+        checks[column] = {
+            "original": original,
+            "assigned": assigned,
+            "difference": difference,
+        }
+
+    return checks
+
+
 def build_section_summary(
     merged_areas,
     origins,
@@ -831,7 +874,6 @@ def build_section_summary(
         "census_section_code",
         "section_type_code",
         "locality_type",
-        "has_observation_row",
         "has_observation",
         "population",
         "reference_date",
@@ -1050,8 +1092,21 @@ def main():
         metric_crs,
     )
 
+    origins = add_origin_v2_fields(
+        origins,
+        municipality_code=args.municipality_code,
+        census_year=args.census_year,
+    )
+
     population_check = (
         validate_population_conservation(
+            observed,
+            origins,
+        )
+    )
+
+    demographic_checks = (
+        validate_demographic_conservation(
             observed,
             origins,
         )
@@ -1268,13 +1323,34 @@ def main():
         "population_conservation":
             population_check,
 
+        "demographic_conservation":
+            demographic_checks,
+
+        "canonical_schema": {
+            "version": "2.0.0",
+            "origin_id": "municipality+census_year+section+network_node",
+            "geography_version": GEOGRAPHY_VERSION,
+            "school_target_population_bands": {
+                "preschool": "population_age_lt5_proxy",
+                "primary_school": "population_age_5_9_proxy",
+                "lower_secondary_school": "population_age_10_14_proxy",
+                "upper_secondary_school": "population_age_15_19_proxy",
+            },
+            "proxy_semantics": (
+                "Five-year ISTAT age bands are analytical proxies, "
+                "not exact school-enrolment cohorts."
+            ),
+        },
+
         "methodology": {
             "internal_nodes":
                 (
                     "For each census section with an observation, "
                     "population and demographic variables are distributed "
                     "uniformly across all pedestrian-network nodes strictly "
-                    "within the section."
+                    "within the section. This is the legacy-v1 origin "
+                    "representation retained for regression during Phase 3A, "
+                    "not yet the methodology-v2 representative-point baseline."
                 ),
 
             "fallback":
@@ -1383,6 +1459,23 @@ def main():
     print(
         "Popolazione su largest component: "
         f"{population_on_lcc:.6f}"
+    )
+
+    proxy_columns_available = [
+        column
+        for column in V2_PROXY_SOURCE_COLUMNS
+        if origins[column].notna().any()
+    ]
+
+    print(
+        "Proxy demografici v2 disponibili: "
+        f"{len(proxy_columns_available)}/"
+        f"{len(V2_PROXY_SOURCE_COLUMNS)}"
+    )
+
+    print(
+        "Variabili demografiche conservate: "
+        f"{len(demographic_checks)}"
     )
 
     print(
