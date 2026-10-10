@@ -5,7 +5,7 @@ checks identities, B6A3 routing eligibility and graph attachment fingerprint,
 but NEVER authorizes sources, creates an overlay or writes files.
 
 Usage:
-  PYTHONPATH=src python src/quality/preflight_real_scenario_b6c3.py \\
+  PYTHONPATH=src python src/quality/preflight_real_service_scenario.py \\
       --municipality-code 034027 --service-type pharmacy --mode walk
 """
 from __future__ import annotations

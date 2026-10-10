@@ -21,9 +21,9 @@ from analysis.scenario_reporting_v2 import _read_table
 from core.analysis_spec import TransportMode
 from core.run_manifest import sha256_file
 from core.schema_v2 import SERVICE_V2
-from quality.audit_boundary_policy_b7a import _footprint_union
-from quality.audit_v2_boundary_policy_b7b import _inside_census_footprint, paths_for_snapshot
-from quality.preflight_real_scenario_b6c3 import ROOT, CitySnapshot
+from quality.audit_legacy_boundary_policy import _footprint_union
+from quality.audit_v2_service_boundary import _inside_census_footprint, paths_for_snapshot
+from quality.preflight_real_service_scenario import ROOT, CitySnapshot
 
 POLICY = "b7b_operational_census_footprint_qualified_service_view_v1"
 FLAG = "inside_operational_footprint"

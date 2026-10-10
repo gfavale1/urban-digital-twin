@@ -12,11 +12,11 @@ from shapely.geometry import Polygon
 from analysis.accessibility_contracts import prepare_service_destinations_v2
 from core.analysis_spec import TransportMode
 from core.run_manifest import sha256_file
-from quality.derive_v2_boundary_service_view_b7b import (
+from quality.derive_boundary_qualified_services import (
     POLICY, FLAG, qualify_v2_services, inspect_boundary_view, write_boundary_view,
 )
-from quality.audit_v2_boundary_policy_b7b import paths_for_snapshot
-import tests.unit.test_v2_boundary_policy_b7b as fixtures
+from quality.audit_v2_service_boundary import paths_for_snapshot
+import tests.unit.test_v2_service_boundary as fixtures
 
 
 class B7BBoundarySafeViewTests(unittest.TestCase):
@@ -131,8 +131,8 @@ class B7BBoundarySafeViewTests(unittest.TestCase):
         resolved.services.write_bytes(b"synthetic service parquet")
         resolved.footprint.write_bytes(b"synthetic footprint parquet")
         before = [sha256_file(resolved.services), sha256_file(resolved.footprint)]
-        with patch("quality.derive_v2_boundary_service_view_b7b._read_table", return_value=self.raw), \
-             patch("quality.derive_v2_boundary_service_view_b7b.gpd.read_parquet", return_value=self.areas):
+        with patch("quality.derive_boundary_qualified_services._read_table", return_value=self.raw), \
+             patch("quality.derive_boundary_qualified_services.gpd.read_parquet", return_value=self.areas):
             view, report = inspect_boundary_view(snap, root=root)
         self.assertEqual(report["location_validated_outside"], 1)
         self.assertEqual(report["outside_footprint"], 1)

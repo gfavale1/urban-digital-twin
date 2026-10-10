@@ -10,12 +10,12 @@ from shapely.geometry import Polygon
 from analysis.scenario_reporting_v2 import ScenarioInputPaths
 from core.analysis_spec import TransportMode
 from core.run_manifest import sha256_file
-from quality.audit_v2_boundary_policy_b7b import (
+from quality.audit_v2_service_boundary import (
     V2BoundaryPaths, inspect_v2_boundary, paths_for_snapshot,
 )
-from quality.preflight_real_scenario_b6c3 import CitySnapshot
+from quality.preflight_real_service_scenario import CitySnapshot
 from transformation.build_network_attachments_v2 import graph_checksum
-import tests.unit.test_preflight_real_scenario_b6c3 as fixtures
+import tests.unit.test_real_service_scenario_preflight as fixtures
 
 
 class B7BV2BoundaryTests(unittest.TestCase):
@@ -45,7 +45,7 @@ class B7BV2BoundaryTests(unittest.TestCase):
         self.footprint.write_bytes(b"synthetic-census-footprint")
 
     def inspect(self):
-        with patch("quality.audit_v2_boundary_policy_b7b.gpd.read_parquet", return_value=self.areas.copy()):
+        with patch("quality.audit_v2_service_boundary.gpd.read_parquet", return_value=self.areas.copy()):
             return inspect_v2_boundary(self.snapshot, self.paths)
 
     def test_valid_census_boundary_audit(self):

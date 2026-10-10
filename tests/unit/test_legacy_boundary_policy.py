@@ -8,7 +8,7 @@ from unittest.mock import patch
 import geopandas as gpd
 from shapely.geometry import Point, box
 
-from quality.audit_boundary_policy_b7a import inspect_boundary_policy, paths_for
+from quality.audit_legacy_boundary_policy import inspect_boundary_policy, paths_for
 
 # Unit-test geometry and checksum logic without requiring the optional pyarrow
 # package in all test environments. Real GeoParquet I/O is exercised by CLI.
@@ -20,7 +20,7 @@ class B7ABoundaryPolicyTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         import pandas as pd
-        stub = patch("quality.audit_boundary_policy_b7a.gpd.read_parquet", side_effect=pd.read_pickle)
+        stub = patch("quality.audit_legacy_boundary_policy.gpd.read_parquet", side_effect=pd.read_pickle)
         stub.start()
         self.addCleanup(stub.stop)
         self.code = "034027"

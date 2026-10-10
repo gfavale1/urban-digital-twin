@@ -6,7 +6,7 @@ boundary-qualified service view before routing. Source services and the ISTAT
 by SHA-256; legacy scenario IDs and results are preserved unchanged.
 
 First explicitly publish the derived view:
-  PYTHONPATH=src python src/quality/derive_v2_boundary_service_view_b7b.py \\
+  PYTHONPATH=src python src/quality/derive_boundary_qualified_services.py \\
     --municipality-code 034027 --mode walk --write \\
     --output data/features/quality/b7b/034027/walk_services.parquet
 
@@ -22,14 +22,14 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from analysis.run_real_service_scenario_b6c3 import execute_real_removal
+from analysis.run_real_service_removal import execute_real_removal
 from analysis.scenario_reporting_v2 import ScenarioInputPaths
 from core.analysis_spec import ServiceType, TransportMode
 from core.run_manifest import sha256_file
-from quality.derive_v2_boundary_service_view_b7b import (
+from quality.derive_boundary_qualified_services import (
     POLICY as VIEW_POLICY, _stage_file, inspect_boundary_view,
 )
-from quality.preflight_real_scenario_b6c3 import (
+from quality.preflight_real_service_scenario import (
     ROOT, CitySnapshot, canonical_paths, inspect_real_snapshot,
 )
 

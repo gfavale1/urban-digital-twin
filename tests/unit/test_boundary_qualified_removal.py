@@ -8,12 +8,12 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from analysis.run_boundary_qualified_removal_b7b import (
+from analysis.run_boundary_qualified_removal import (
     POLICY, execute_boundary_qualified_removal, verify_boundary_view,
 )
 from core.run_manifest import sha256_file
-from quality.derive_v2_boundary_service_view_b7b import POLICY as VIEW_POLICY, write_boundary_view
-import tests.unit.test_real_service_removal_b6c3b as fixtures
+from quality.derive_boundary_qualified_services import POLICY as VIEW_POLICY, write_boundary_view
+import tests.unit.test_real_service_removal as fixtures
 
 
 class B7BBoundaryQualifiedRealScenarioTests(unittest.TestCase):
@@ -58,7 +58,7 @@ class B7BBoundaryQualifiedRealScenarioTests(unittest.TestCase):
         self.qualified = self.root / "derived" / "boundary_services.csv"
         write_boundary_view(self.view, self.meta, self.qualified)
         self.mock_view = patch(
-            "analysis.run_boundary_qualified_removal_b7b.inspect_boundary_view",
+            "analysis.run_boundary_qualified_removal.inspect_boundary_view",
             return_value=(self.view, self.meta),
         )
         self.mock_view.start()

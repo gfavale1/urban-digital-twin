@@ -21,7 +21,7 @@ class B6C2ReportingTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        from tests.unit.test_service_scenarios_b6c1 import B6C1ScenarioTests
+        from tests.unit.test_service_scenarios_v2 import B6C1ScenarioTests
         fixture = B6C1ScenarioTests(methodName="test_inputs_are_immutable")
         fixture.setUp()
         self.fixture = fixture

@@ -24,8 +24,8 @@ from analysis.scenario_reporting_v2 import _read_table
 from core.analysis_spec import TransportMode
 from core.run_manifest import sha256_file
 from core.schema_v2 import NETWORK_ATTACHMENT_V2, SERVICE_V2
-from quality.audit_boundary_policy_b7a import _footprint_union, paths_for
-from quality.preflight_real_scenario_b6c3 import ROOT, CitySnapshot, canonical_paths
+from quality.audit_legacy_boundary_policy import _footprint_union, paths_for
+from quality.preflight_real_service_scenario import ROOT, CitySnapshot, canonical_paths
 from transformation.build_network_attachments_v2 import graph_checksum, normalize_node_id
 
 POLICY = "b7b_v2_routable_supply_census_footprint_v1"

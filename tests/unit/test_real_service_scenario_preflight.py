@@ -7,7 +7,7 @@ import pandas as pd
 
 from analysis.scenario_reporting_v2 import ScenarioInputPaths
 from core.analysis_spec import ServiceType, TransportMode
-from quality.preflight_real_scenario_b6c3 import (
+from quality.preflight_real_service_scenario import (
     CitySnapshot, canonical_paths, inspect_real_snapshot,
 )
 from transformation.build_network_attachments_v2 import graph_checksum

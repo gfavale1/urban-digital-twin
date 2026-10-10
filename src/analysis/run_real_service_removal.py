@@ -6,7 +6,7 @@ walking in the frozen legacy-regression profile (1.4 m/s; 10/15/20 min).
 It cannot promote missing or unvalidated ANNCSU services.
 
 Example:
-  PYTHONPATH=src python src/analysis/run_real_service_scenario_b6c3.py \\
+  PYTHONPATH=src python src/analysis/run_real_service_removal.py \\
     --municipality-code 034027 --city-name Parma \\
     --analysis-date 2025-06-30 \\
     --remove-service-id 'SVC2::HEALTH::SALUTE:PHARMACY:19945::pharmacy'
@@ -36,7 +36,7 @@ from analysis.scenario_reporting_v2 import (
 )
 from core.analysis_spec import AnalysisSpec, ServiceType, TransportMode
 from core.config import DEFAULT_CONFIG
-from quality.preflight_real_scenario_b6c3 import (
+from quality.preflight_real_service_scenario import (
     ROOT, CitySnapshot, canonical_paths, inspect_real_snapshot,
 )
 

@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from analysis.run_real_service_scenario_b6c3 import (
+from analysis.run_real_service_removal import (
     _check_legacy_walk_network, execute_real_removal,
 )
 from core.analysis_spec import TransportMode
 from core.run_manifest import sha256_file
-from quality.preflight_real_scenario_b6c3 import CitySnapshot
+from quality.preflight_real_service_scenario import CitySnapshot
 from transformation.build_network_attachments_v2 import graph_checksum
-import tests.unit.test_preflight_real_scenario_b6c3 as fixtures
+import tests.unit.test_real_service_scenario_preflight as fixtures
 
 
 class B6C3bRealRemovalTests(unittest.TestCase):
