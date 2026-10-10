@@ -6,6 +6,7 @@ from typing import Any
 import networkx as nx
 import pandas as pd
 
+from analysis.service_eligibility_v2 import apply_service_routing_gate
 from analysis.accessibility_engine import (
     AccessibilityEngineRequest,
     AccessibilityEngineResult,
@@ -153,6 +154,56 @@ def _mode_attachments(
     return selected
 
 
+def prepare_service_destinations_v2(
+    services: pd.DataFrame,
+    attachments: pd.DataFrame,
+    *,
+    mode: TransportMode,
+) -> pd.DataFrame:
+    """Build fail-closed engine-facing v2 destinations for one transport mode.
+
+    Attachment availability is *not* evidence that the underlying service has
+    a validated location. Keep the source attachment for auditing, but blank
+    the engine-facing network node if independent eligibility is absent.
+    """
+    mode = TransportMode(mode)
+    SERVICE_V2.validate_columns(services.columns)
+    if services["service_id"].isna().any() or services["service_id"].astype(str).duplicated().any():
+        raise ValueError("ServiceV2 service_id must be non-null and unique.")
+
+    checked = _validate_attachment_table(attachments)
+    selected = _mode_attachments(
+        checked,
+        entity_kind="service",
+        mode=mode,
+        expected_entity_ids=services["service_id"],
+    )
+    optional_columns = [
+        column for column in ("network_component_id", "is_largest_component", "graph_checksum")
+        if column in selected.columns
+    ]
+    attachment_view = selected[
+        ["entity_id", "node_id", "snapped", "snap_distance_m"] + optional_columns
+    ].rename(columns={
+        "entity_id": "service_id",
+        "node_id": "network_node_id",
+    })
+
+    result = services.drop(
+        columns=[
+            column for column in (
+                "network_node_id", "snapped", "snap_distance_m",
+                "routing_eligible", "routing_exclusion_reason",
+                "attachment_node_id", "attachment_snap_distance_m",
+            ) if column in services.columns
+        ]
+    ).copy()
+    result["service_id"] = result["service_id"].astype(str)
+    attachment_view["service_id"] = attachment_view["service_id"].astype(str)
+    result = result.merge(attachment_view, on="service_id", how="left", validate="one_to_one")
+    return apply_service_routing_gate(result)
+
+
 def prepare_canonical_accessibility_inputs(
     origins: pd.DataFrame,
     services: pd.DataFrame,
@@ -185,12 +236,6 @@ def prepare_canonical_accessibility_inputs(
         mode=mode,
         expected_entity_ids=origins["origin_id"],
     )
-    service_attachments = _mode_attachments(
-        prepared_attachments,
-        entity_kind="service",
-        mode=mode,
-        expected_entity_ids=services["service_id"],
-    )
 
     origin_attachment_view = origin_attachments[
         ["entity_id", "node_id", "snapped", "snap_distance_m"]
@@ -202,14 +247,6 @@ def prepare_canonical_accessibility_inputs(
         }
     )
 
-    service_attachment_view = service_attachments[
-        ["entity_id", "node_id", "snapped", "snap_distance_m"]
-    ].rename(
-        columns={
-            "entity_id": "service_id",
-            "node_id": "network_node_id",
-        }
-    )
 
     # NetworkAttachmentV2 is the authoritative source for routing attachment.
     # Canonical entities may temporarily carry legacy convenience columns during
@@ -233,23 +270,11 @@ def prepare_canonical_accessibility_inputs(
     origin_result.loc[~origin_result["snapped"], "network_node_id"] = None
     origin_result.loc[~origin_result["snapped"], "origin_snap_distance_m"] = None
 
-    service_result = services.drop(
-        columns=[
-            column
-            for column in ("network_node_id", "snapped", "snap_distance_m")
-            if column in services.columns
-        ]
-    ).copy()
-    service_result["service_id"] = service_result["service_id"].astype(str)
-    service_attachment_view["service_id"] = service_attachment_view["service_id"].astype(str)
-    service_result = service_result.merge(
-        service_attachment_view,
-        on="service_id",
-        how="left",
-        validate="one_to_one",
+    service_result = prepare_service_destinations_v2(
+        services,
+        prepared_attachments,
+        mode=mode,
     )
-    service_result.loc[~service_result["snapped"], "network_node_id"] = None
-    service_result.loc[~service_result["snapped"], "snap_distance_m"] = None
 
     return CanonicalAccessibilityInputs(
         origins=origin_result,

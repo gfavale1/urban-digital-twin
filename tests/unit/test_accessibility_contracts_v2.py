@@ -62,6 +62,10 @@ class AccessibilityCanonicalContractsV2Tests(unittest.TestCase):
             }
         )
 
+        # B6A3: fixtures model validated services; otherwise the fail-closed
+        # destination gate correctly refuses to route them.
+        self.services["legacy_usable_for_accessibility"] = True
+
         self.attachments = pd.DataFrame(
             [
                 {
