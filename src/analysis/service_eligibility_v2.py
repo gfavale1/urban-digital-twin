@@ -49,6 +49,14 @@ def apply_service_routing_gate(joined_services: pd.DataFrame) -> pd.DataFrame:
     else:
         verified = result["legacy_usable_for_accessibility"].map(_validation_flag)
 
+    # B7B opt-in operational geographic qualification. Historical B6C reports
+    # lack this versioned evidence and remain reproducible with the old gate.
+    # A new boundary-aware workflow must supply the derived view explicitly.
+    if "inside_operational_footprint" in result:
+        boundary = result["inside_operational_footprint"].map(_validation_flag)
+    else:
+        boundary = None
+
     result["attachment_node_id"] = result["network_node_id"].copy()
     result["attachment_snap_distance_m"] = result["snap_distance_m"].copy()
     reasons: list[str] = []
@@ -57,6 +65,10 @@ def apply_service_routing_gate(joined_services: pd.DataFrame) -> pd.DataFrame:
             reason = "missing_validation_evidence"
         elif not verified.loc[index]:
             reason = "location_not_validated"
+        elif boundary is not None and boundary.loc[index] is None:
+            reason = "boundary_not_verified"
+        elif boundary is not None and not boundary.loc[index]:
+            reason = "outside_operational_footprint"
         elif pd.isna(row["operational_status"]) or str(row["operational_status"]).strip().lower() != "active":
             reason = "service_not_active"
         elif not row["snapped"] or pd.isna(row["network_node_id"]):

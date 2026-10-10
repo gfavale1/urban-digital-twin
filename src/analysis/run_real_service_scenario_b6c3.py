@@ -66,7 +66,7 @@ def _check_legacy_walk_network(edges: pd.DataFrame, speed_m_s: float) -> None:
 def execute_real_removal(
     *, snapshot: CitySnapshot, paths: ScenarioInputPaths, service_id: str,
     city_name: str, analysis_date: str, output_root: Path | None = None,
-    write_report: bool = False,
+    write_report: bool = False, territorial_provenance: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], Path | None]:
     """Validate real canonical files and execute one removal, never modify input.
 
@@ -174,10 +174,17 @@ def execute_real_removal(
         "input_sha256": inspection["input_sha256"],
         "graph_sha256": inspection["graph_sha256"],
     }
+    if territorial_provenance is not None:
+        if territorial_provenance.get("policy") != "b7b_operational_census_footprint_qualified_service_view_v1":
+            raise ValueError("Unexpected territorial provenance policy")
+        summary["territorial_qualification"] = territorial_provenance
+        summary["policy"] = "b7b_qualified_real_service_removal_experiment_v1"
     dest = None
     if write_report:
         if output_root is None:
             raise ValueError("Explicit output_root is required to write reports")
+        if territorial_provenance is not None:
+            provenance["territorial_qualification"] = territorial_provenance
         provenance["b6c3b_experiment"] = {
             "policy": POLICY, "removed_service_id": service_id,
             "preflight_eligible_services": inspection["selected_eligible_count"],
