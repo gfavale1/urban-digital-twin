@@ -35,6 +35,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--municipality-code", required=True)
     parser.add_argument("--mode", choices=[mode.value for mode in TransportMode], required=True)
     parser.add_argument("--census-year", default="2023")
+    parser.add_argument(
+        "--origins-parquet", type=Path,
+        help=("Optional explicit OriginV2 GeoParquet, e.g. a versioned migration "
+              "of the legacy origins. Never rewrites the legacy source."),
+    )
+    parser.add_argument(
+        "--no-overwrite", action="store_true",
+        help="Refuse to replace an existing attachment Parquet, CSV or manifest.",
+    )
     parser.add_argument("--school-year", default="202425")
     parser.add_argument("--health-reference-date", default="2025-06-30")
     parser.add_argument(
@@ -92,12 +101,13 @@ def graph_checksum(nodes_path: Path, edges_path: Path) -> str:
 
 def input_paths(args: argparse.Namespace) -> dict[str, Path]:
     health_label = args.health_reference_date.strftime("%Y%m%d")
+    default_origins = (
+        FEATURES_ACCESSIBILITY_DIR
+        / args.municipality_code
+        / f"population_network_origins_{args.census_year}.parquet"
+    )
     return {
-        "origins": (
-            FEATURES_ACCESSIBILITY_DIR
-            / args.municipality_code
-            / f"population_network_origins_{args.census_year}.parquet"
-        ),
+        "origins": Path(args.origins_parquet) if getattr(args, "origins_parquet", None) else default_origins,
         "services": (
             PROCESSED_SERVICES_DIR
             / args.municipality_code
@@ -485,6 +495,10 @@ def main() -> None:
     )
 
     outputs = output_paths(args)
+    if getattr(args, "no_overwrite", False):
+        existing = [str(path) for path in outputs.values() if path.exists()]
+        if existing:
+            raise FileExistsError("Refusing to overwrite attachment outputs: " + ", ".join(existing))
     attachments.to_parquet(outputs["parquet"], index=False)
     attachments.to_csv(outputs["csv"], index=False, encoding="utf-8-sig")
 
@@ -496,6 +510,10 @@ def main() -> None:
         "school_year": str(args.school_year),
         "health_reference_date": args.health_reference_date.strftime("%Y-%m-%d"),
         "max_snap_distance_m": float(args.max_snap_distance_m),
+        "origin_input_selection": (
+            "explicit_v2_origins" if args.origins_parquet is not None
+            else "default_canonical_origins"
+        ),
         "graph_checksum": checksum,
         "input_paths": {key: str(value) for key, value in paths.items()},
         "input_sha256": {key: sha256_file(value) for key, value in paths.items()},
