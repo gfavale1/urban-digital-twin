@@ -9,6 +9,7 @@ import time
 import unicodedata
 from pathlib import Path
 import pandas as pd
+import numpy as np
 import geopandas as gpd
 import requests
 from dotenv import load_dotenv
@@ -706,6 +707,25 @@ def finalize_build_final(sources, matches, qa, candidates):
             base['osm_address_score'] = None
             base['osm_name_score'] = None
         if qa_row is not None:
+            # The finalization source frame only recomputes duplicate-coordinate
+            # suspicion.  Spatial QA additionally flags municipal outliers.
+            # Preserve that evidence in final metadata without changing the
+            # historical coordinate-selection / routing decision.
+            qa_suspicious = qa_row.get('source_coordinate_suspicious', pd.NA)
+            if pd.notna(qa_suspicious):
+                if not isinstance(qa_suspicious, (bool, np.bool_)):
+                    raise ValueError('Health QA source_coordinate_suspicious must be boolean')
+                base['source_coordinate_suspicious'] = (
+                    base['source_coordinate_suspicious'] or bool(qa_suspicious)
+                )
+            for field in (
+                'source_coordinate_inside_municipality',
+                'source_coordinate_outside_municipality',
+                'source_coordinate_distance_to_municipality_m',
+                'source_coordinate_suspicion_reason',
+            ):
+                if field in qa_row and pd.notna(qa_row[field]):
+                    base[field] = qa_row[field]
             base['geocoder_qa_status'] = qa_row.get('qa_status')
             base['geocoder_score'] = qa_row.get('geocoder_score')
             base['geocoder_display_name'] = qa_row.get('geocoder_display_name')
